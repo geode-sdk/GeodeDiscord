@@ -1,8 +1,8 @@
-﻿using System.Net;
-using System.Text.Json;
+﻿using System.Text.Json;
 
 using Discord;
 using Discord.Interactions;
+using Discord.Rest;
 using Discord.WebSocket;
 
 using GeodeDiscord.Database;
@@ -269,11 +269,12 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
     }
 
     private readonly record struct UberBotQuote
-        (string id, string channel, string messageId, long time);
+        (string id, string nick, string channel, string messageId, string text, long time);
 
     [SlashCommand("import", "Imports quotes from UB3R-B0T's API response."), UsedImplicitly]
     public async Task ImportQuotes(Attachment attachment) {
-        await RespondAsync($"Importing quotes from {attachment.Filename}: downloading attachment");
+        await DeferAsync();
+        await FollowupAsync($"Importing quotes from {attachment.Filename}: downloading attachment");
 
         string data;
         using (HttpClient client = new()) {
@@ -297,30 +298,89 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
 
         int importedQuotes = 0;
         for (int i = 0; i < toImport.Length; i++) {
-            await ModifyOriginalResponseAsync(prop =>
-                prop.Content = $"Importing quotes from {attachment.Filename}: {i}/{toImport.Length}");
-            (string id, string channelName, string messageIdStr, long time) = toImport[i];
+            if (i % 10 == 0)
+                await ModifyOriginalResponseAsync(prop =>
+                    prop.Content = $"Importing quotes from {attachment.Filename}: {i}/{toImport.Length.ToString()}");
+            (string id, string nick, string channelName, string messageIdStr, string text, long time) = toImport[i];
             if (!ulong.TryParse(messageIdStr, out ulong messageId)) {
                 await FollowupAsync($"⚠️ Failed to import quote {id}! (invalid message ID)");
                 continue;
             }
             DateTimeOffset timestamp = DateTimeOffset.FromUnixTimeSeconds(time);
 
-            IMessageChannel? channel = Context.Guild.TextChannels.FirstOrDefault(ch => ch.Name == channelName) ??
-                Context.Guild.StageChannels.FirstOrDefault(ch => ch.Name == channelName) ??
-                Context.Guild.VoiceChannels.FirstOrDefault(ch => ch.Name == channelName);
-            if (channel is null) {
-                await RespondAsync($"⚠️ Failed to import quote {id}! (channel {channelName} not found)");
-                continue;
+            IMessageChannel? channel = null;
+            if (!string.IsNullOrWhiteSpace(channelName)) {
+                try {
+                    channel = Context.Guild.TextChannels.FirstOrDefault(ch => ch.Name == channelName) ??
+                        Context.Guild.StageChannels.FirstOrDefault(ch => ch.Name == channelName) ??
+                        Context.Guild.VoiceChannels.FirstOrDefault(ch => ch.Name == channelName);
+                    if (channel is null) {
+                        await FollowupAsync($"⚠️ Failed to import quote {id}! (channel {channelName} not found)");
+                        continue;
+                    }
+                }
+                catch (Exception ex) {
+                    Console.WriteLine(ex.ToString());
+                    await FollowupAsync($"⚠️ Failed to import quote {id}! (failed to access channel)");
+                    continue;
+                }
             }
 
-            IMessage? message = await channel.GetMessageAsync(messageId);
-            if (message is null) {
-                await RespondAsync($"⚠️ Failed to import quote {id}! (message {messageId} not found)");
-                continue;
+            IMessage? message = null;
+            if (channel is not null) {
+                try {
+                    message = await channel.GetMessageAsync(messageId);
+                    if (message is null) {
+                        await FollowupAsync($"⚠️ Failed to import quote {id}! (message {messageId} not found)");
+                        continue;
+                    }
+                }
+                catch (Exception ex) {
+                    Console.WriteLine(ex.ToString());
+                    await FollowupAsync($"⚠️ Failed to import quote {id}! (failed to access message)");
+                    continue;
+                }
             }
 
-            _db.Add(await Util.MessageToQuote(id, message, timestamp));
+            if (message is not null) {
+                _db.Add(await Util.MessageToQuote(id, message, timestamp));
+            }
+            else {
+                RestGuildUser? user;
+                nick = nick.ToLowerInvariant();
+                try {
+                    user = (await Context.Guild.SearchUsersAsync(nick)).FirstOrDefault();
+                    if (user is null)
+                        await FollowupAsync($"⚠️ Couldn't get user {nick} for quote {id}! (user is null)");
+                    else
+                        await FollowupAsync($"🗒️ User for quote {id} detected as <@{user.Id}>",
+                            allowedMentions: AllowedMentions.None);
+                }
+                catch (Exception ex) {
+                    Console.WriteLine(ex.ToString());
+                    await FollowupAsync($"⚠️ Couldn't get user {nick} for quote {id}!");
+                    user = null;
+                }
+
+                await FollowupAsync($"⚠️ Quote {id} imported with potentially missing data!");
+
+                _db.Add(new Quote {
+                    name = id,
+                    messageId = messageId,
+                    channelId = 0,
+                    createdAt = timestamp,
+                    lastEditedAt = timestamp,
+
+                    authorId = user?.Id ?? 0,
+                    replyAuthorId = 0,
+                    jumpUrl = null,
+
+                    images = "",
+                    extraAttachments = 0,
+
+                    content = text
+                });
+            }
 
             importedQuotes++;
         }
