@@ -78,12 +78,27 @@ public class InteractionHandler {
         if (message is null || channel is null)
             return;
 
+        channel.EnterTypingState();
+
+        // couldn't find a better way of doing this
+        SocketGuildUser? guildUser = null;
+        foreach (SocketGuild guild in _client.Guilds) {
+            guildUser = guild.GetUser(reaction.UserId);
+            if (guildUser is not null)
+                break;
+        }
+        if (guildUser is not null && !guildUser.GuildPermissions.Has(GuildPermission.Administrator) &&
+            guildUser.Roles.All(role => role.Name != "\ud83d\udcac")) {
+            await channel.SendMessageAsync($"<@{reaction.UserId}>: ❌ Cannot quote without the quote role!");
+            return;
+        }
+
         if (message.Author.Id == _client.CurrentUser.Id) {
             await channel.SendMessageAsync($"<@{reaction.UserId}>: ❌ Cannot quote myself!");
             return;
         }
 
-        Quote quote = await Util.MessageToQuote(Guid.NewGuid().ToString(), message);
+        Quote quote = await Util.MessageToQuote(Quote.GetRandomName(), message);
         bool res = QuoteModule.TrySaveQuote(_db, quote);
         if (!res) {
             await channel.SendMessageAsync($"<@{reaction.UserId}>: ❌ Failed to save quote!");

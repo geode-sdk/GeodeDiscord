@@ -7,10 +7,6 @@ using GeodeDiscord.Database.Entities;
 namespace GeodeDiscord;
 
 public static class Util {
-    private static string GetUserDisplayName(IUser user) => user.GlobalName ?? (user.DiscriminatorValue == 0 ?
-        user.Username : $"{user.Username}{user.Discriminator}");
-    private static string GetUserAvatarUrl(IUser user) => user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl();
-
     private static List<string> GetMessageImages(IMessage message) => message.Attachments
         .Where(att => !att.IsSpoiler() && att.ContentType.StartsWith("image/", StringComparison.Ordinal))
         .Take(10)
@@ -27,50 +23,49 @@ public static class Util {
         return refMessage ?? null;
     }
 
-    public static async Task<Quote> MessageToQuote(string name, IMessage message) {
-        string authorName = GetUserDisplayName(message.Author);
-        string authorIcon = GetUserAvatarUrl(message.Author);
+    public static async Task<Quote> MessageToQuote(string name, IMessage message, Quote? original = null) {
         List<string> images = GetMessageImages(message);
         int extraAttachments = message.Attachments.Count - images.Count;
         ulong replyAuthorId = (await GetReplyAsync(message))?.Author.Id ?? 0;
+        DateTimeOffset timestamp = DateTimeOffset.Now;
         return new Quote {
-            messageId = message.Id,
             name = name,
-            jumpUrl = message.Channel is null ? null : message.GetJumpUrl(),
-            timestamp = DateTimeOffset.Now,
+            messageId = message.Id,
+            channelId = message.Channel?.Id ?? 0,
+            createdAt = original?.createdAt ?? timestamp,
+            lastEditedAt = timestamp,
 
-            authorName = authorName,
-            authorIcon = authorIcon,
             authorId = message.Author.Id,
+            replyAuthorId = replyAuthorId,
+            jumpUrl = message.Channel is null ? null : message.GetJumpUrl(),
 
             images = string.Join('|', images),
             extraAttachments = extraAttachments,
-            content = message.Content,
-            replyAuthorId = replyAuthorId
+            content = message.Content
         };
     }
 
-    public static async IAsyncEnumerable<Embed> QuoteToEmbeds(IGuild guild, Quote quote) {
-        string authorName = quote.authorName;
-        string authorIcon = quote.authorIcon;
-        IGuildUser? authorUser = await guild.GetUserAsync(quote.authorId);
-        if (authorUser is not null) {
-            authorName = authorUser.DisplayName;
-            authorIcon = authorUser.GetDisplayAvatarUrl();
-        }
-
+    public static IEnumerable<Embed> QuoteToEmbeds(Quote quote) {
         StringBuilder description = new();
-        if (quote.replyAuthorId != 0) {
-            description.Append("> *replied to <@");
-            description.Append(quote.replyAuthorId);
-            description.AppendLine(">*");
-        }
         description.AppendLine(quote.content);
         description.AppendLine();
-        description.Append(quote.jumpUrl ?? "*[ missing jump url ]*");
-        description.Append(" by <@");
+        description.Append("\\- <@");
         description.Append(quote.authorId);
         description.Append('>');
+        if (quote.replyAuthorId != 0) {
+            description.Append(" in response to <@");
+            description.Append(quote.replyAuthorId);
+            description.Append('>');
+        }
+        description.Append(" in ");
+        description.Append(quote.jumpUrl ?? "*[ missing jump url ]*");
+        if (quote.createdAt != quote.lastEditedAt) {
+            description.AppendLine();
+            description.AppendLine();
+            description.Append("Last edited at <t:");
+            description.Append(quote.lastEditedAt.ToUnixTimeSeconds());
+            description.Append(":f>");
+        }
 
         string[] images = quote.images.Split('|');
 
@@ -83,11 +78,10 @@ public static class Util {
         }
 
         yield return new EmbedBuilder()
-            .WithTitle($"Quote {quote.name}")
-            .WithAuthor(authorName, authorIcon)
+            .WithAuthor(quote.name)
             .WithDescription(description.ToString())
             .WithImageUrl(images.Length > 0 ? images[0] : null)
-            .WithTimestamp(quote.timestamp)
+            .WithTimestamp(quote.createdAt)
             .WithFooter(footer.ToString())
             .Build();
 

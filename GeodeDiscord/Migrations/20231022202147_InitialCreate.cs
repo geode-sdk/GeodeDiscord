@@ -15,21 +15,21 @@ namespace GeodeDiscord.Migrations
                 name: "quotes",
                 columns: table => new
                 {
-                    messageId = table.Column<ulong>(type: "INTEGER", nullable: false),
                     name = table.Column<string>(type: "TEXT", nullable: false),
-                    jumpUrl = table.Column<string>(type: "TEXT", nullable: true),
-                    timestamp = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
-                    authorName = table.Column<string>(type: "TEXT", nullable: false),
-                    authorIcon = table.Column<string>(type: "TEXT", nullable: false),
+                    messageId = table.Column<ulong>(type: "INTEGER", nullable: false),
+                    channelId = table.Column<ulong>(type: "INTEGER", nullable: false),
+                    createdAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    lastEditedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                     authorId = table.Column<ulong>(type: "INTEGER", nullable: false),
+                    replyAuthorId = table.Column<ulong>(type: "INTEGER", nullable: false),
+                    jumpUrl = table.Column<string>(type: "TEXT", nullable: true),
                     images = table.Column<string>(type: "TEXT", nullable: false),
                     extraAttachments = table.Column<int>(type: "INTEGER", nullable: false),
-                    content = table.Column<string>(type: "TEXT", nullable: false),
-                    replyAuthorId = table.Column<ulong>(type: "INTEGER", nullable: false)
+                    content = table.Column<string>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_quotes", x => new { x.messageId, x.name });
+                    table.PrimaryKey("PK_quotes", x => x.name);
                 });
         }
 

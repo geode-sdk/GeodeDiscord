@@ -19,25 +19,20 @@ namespace GeodeDiscord.Migrations
 
             modelBuilder.Entity("GeodeDiscord.Database.Entities.Quote", b =>
                 {
-                    b.Property<ulong>("messageId")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("name")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("authorIcon")
-                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<ulong>("authorId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("authorName")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                    b.Property<ulong>("channelId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("content")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("createdAt")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("extraAttachments")
@@ -50,13 +45,16 @@ namespace GeodeDiscord.Migrations
                     b.Property<string>("jumpUrl")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset>("lastEditedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<ulong>("messageId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<ulong>("replyAuthorId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset>("timestamp")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("messageId", "name");
+                    b.HasKey("name");
 
                     b.ToTable("quotes");
                 });

@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GeodeDiscord.Modules;
 
-[UsedImplicitly]
+[Group("quote", "Quote other people's messages."), UsedImplicitly]
 public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
     private readonly DiscordSocketClient _client;
     private readonly ApplicationDbContext _db;
@@ -33,26 +33,236 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
             if (realMessage is not null)
                 message = realMessage;
         }
-        Quote quote = await Util.MessageToQuote(Guid.NewGuid().ToString(), message);
+        Quote quote = await Util.MessageToQuote(Quote.GetRandomName(), message);
         bool res = TrySaveQuote(_db, quote);
         if (!res) {
             await RespondAsync("❌ Failed to save quote!", ephemeral: true);
             return;
         }
-        await RespondAsync($"Quote saved as **{quote.name}**!");
+        await RespondAsync(
+            $"Quote saved as **{quote.name}**!",
+            components: new ComponentBuilder()
+                .WithButton("Rename", $"quote-rename-button:{quote.name}", emote: new Emoji("📝"))
+                .Build()
+        );
     }
 
-    [SlashCommand("quote", "Gets a random quote.")]
+    [ComponentInteraction("quote-rename-button:*", true), UsedImplicitly]
+    public async Task RenameQuoteButton(string name) {
+        if (!_db.quotes.Any()) {
+            await RespondAsync("❌ There are no quotes yet!", ephemeral: true);
+            return;
+        }
+        if (await _db.quotes.FindAsync(name) is null) {
+            await RespondAsync("❌ Quote not found!", ephemeral: true);
+            return;
+        }
+        await RespondWithModalAsync<QuoteRenameModal>($"quote-rename-modal:{name}");
+    }
+
+    public class QuoteRenameModal : IModal {
+        public string Title => "Rename Quote";
+
+        [InputLabel("New Name"), ModalTextInput("newName", placeholder: "geode creepypasta", maxLength: 30),
+         UsedImplicitly]
+        public string newName { get; set; } = "";
+    }
+
+    [ModalInteraction("quote-rename-modal:*", true), UsedImplicitly]
+    public async Task RenameQuoteModal(string name, QuoteRenameModal modal) => await RenameQuote(name, modal.newName);
+
+    [SlashCommand("random", "Gets a random quote."), UsedImplicitly]
     public async Task GetRandomQuote() {
         if (!_db.quotes.Any()) {
-            await RespondAsync("❌ There no quotes yet!", ephemeral: true);
+            await RespondAsync("❌ There are no quotes yet!", ephemeral: true);
             return;
         }
         Quote quote = _db.quotes.OrderBy(_ => EF.Functions.Random()).First();
         await RespondAsync(
             allowedMentions: AllowedMentions.None,
-            embeds: await Util.QuoteToEmbeds(Context.Guild, quote).ToArrayAsync()
+            embeds: Util.QuoteToEmbeds(quote).ToArray()
         );
+    }
+
+    [SlashCommand("user", "Gets a random quote from the specified user."), UsedImplicitly]
+    public async Task GetUserQuote(IUser user) {
+        if (!_db.quotes.Any()) {
+            await RespondAsync("❌ There are no quotes yet!", ephemeral: true);
+            return;
+        }
+        Quote? quote = await _db.quotes
+            .Where(q => q.authorId == user.Id)
+            .OrderBy(_ => EF.Functions.Random())
+            .FirstOrDefaultAsync();
+        if (quote is null) {
+            await RespondAsync("❌ Quote not found!", ephemeral: true);
+            return;
+        }
+        await RespondAsync(
+            allowedMentions: AllowedMentions.None,
+            embeds: Util.QuoteToEmbeds(quote).ToArray()
+        );
+    }
+
+    [SlashCommand("user-id", "Gets a random quote from the specified user by ID."), UsedImplicitly]
+    public async Task GetUserQuote(string user) {
+        if (!_db.quotes.Any()) {
+            await RespondAsync("❌ There are no quotes yet!", ephemeral: true);
+            return;
+        }
+        if (!ulong.TryParse(user, out ulong userId)) {
+            await RespondAsync("❌ Invalid user ID!", ephemeral: true);
+            return;
+        }
+        Quote? quote = await _db.quotes
+            .Where(q => q.authorId == userId)
+            .OrderBy(_ => EF.Functions.Random())
+            .FirstOrDefaultAsync();
+        if (quote is null) {
+            await RespondAsync("❌ Quote not found!", ephemeral: true);
+            return;
+        }
+        await RespondAsync(
+            allowedMentions: AllowedMentions.None,
+            embeds: Util.QuoteToEmbeds(quote).ToArray()
+        );
+    }
+
+    [SlashCommand("get", "Gets a quote with the specified name."), UsedImplicitly]
+    public async Task GetQuoteByName(string name) {
+        Quote? quote = await _db.quotes.FindAsync(name);
+        if (quote is null) {
+            await RespondAsync("❌ Quote not found!", ephemeral: true);
+            return;
+        }
+        await RespondAsync(
+            allowedMentions: AllowedMentions.None,
+            embeds: Util.QuoteToEmbeds(quote).ToArray()
+        );
+    }
+
+    [SlashCommand("get-message-id", "Gets a quote for the specified message."), UsedImplicitly]
+    public async Task GetQuoteByMessageId(string message) {
+        if (!_db.quotes.Any()) {
+            await RespondAsync("❌ There are no quotes yet!", ephemeral: true);
+            return;
+        }
+        if (!ulong.TryParse(message, out ulong messageId)) {
+            await RespondAsync("❌ Invalid message ID!", ephemeral: true);
+            return;
+        }
+        Quote? quote = await _db.quotes.FirstOrDefaultAsync(q => q.messageId == messageId);
+        if (quote is null) {
+            await RespondAsync("❌ Quote not found!", ephemeral: true);
+            return;
+        }
+        await RespondAsync(
+            allowedMentions: AllowedMentions.None,
+            embeds: Util.QuoteToEmbeds(quote).ToArray()
+        );
+    }
+
+    [SlashCommand("find", "Finds the first quote that contains the specified string."), UsedImplicitly]
+    public async Task FindQuote(string search) {
+        Quote? quote = await _db.quotes.FirstOrDefaultAsync(q => q.name.Contains(search) || q.content.Contains(search));
+        if (quote is null) {
+            await RespondAsync("❌ Quote not found!", ephemeral: true);
+            return;
+        }
+        await RespondAsync(
+            allowedMentions: AllowedMentions.None,
+            embeds: Util.QuoteToEmbeds(quote).ToArray()
+        );
+    }
+
+    [SlashCommand("rename", "Renames a quote with the specified name."), UsedImplicitly]
+    public async Task RenameQuote(string oldName, string newName) {
+        Quote? quote = await _db.quotes.FindAsync(oldName);
+        if (quote is null) {
+            await RespondAsync($"❌ Quote **{oldName}** not found!", ephemeral: true);
+            return;
+        }
+        if (await _db.quotes.FindAsync(newName) is not null) {
+            await RespondAsync($"❌ Quote **${newName}** already exists!", ephemeral: true);
+            return;
+        }
+        _db.Remove(quote);
+        _db.Add(quote.WithName(newName));
+        try {
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex) {
+            Console.WriteLine(ex.ToString());
+            await RespondAsync("❌ Failed to rename quote!", ephemeral: true);
+            return;
+        }
+        await RespondAsync($"Quote *{quote.name}* renamed to **{newName}**!");
+    }
+
+    [SlashCommand("delete", "Deletes a quote with the specified name."), UsedImplicitly]
+    public async Task DeleteQuote(string name) {
+        Quote? quote = await _db.quotes.FindAsync(name);
+        if (quote is null) {
+            await RespondAsync("❌ Quote not found!", ephemeral: true);
+            return;
+        }
+        _db.Remove(quote);
+        try {
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex) {
+            Console.WriteLine(ex.ToString());
+            await RespondAsync("❌ Failed to delete quote!", ephemeral: true);
+            return;
+        }
+        await RespondAsync($"Deleted quote **{quote.name}**!");
+    }
+
+    [SlashCommand("update", "Updates a quote by re-fetching the message."), UsedImplicitly]
+    public async Task UpdateQuote(string name) {
+        Quote? quote = await _db.quotes.FindAsync(name);
+        if (quote is null) {
+            await RespondAsync("❌ Quote not found!", ephemeral: true);
+            return;
+        }
+
+        if (quote.channelId == 0) {
+            await RespondAsync("❌ Failed to update quote! (channel ID not set)", ephemeral: true);
+            return;
+        }
+
+        IMessageChannel? channel = Context.Guild.GetTextChannel(quote.channelId) ??
+            Context.Guild.GetStageChannel(quote.channelId) ??
+            Context.Guild.GetVoiceChannel(quote.channelId);
+        if (channel is null) {
+            await RespondAsync($"❌ Failed to update quote! (channel {quote.channelId} not found)", ephemeral: true);
+            return;
+        }
+
+        IMessage? message = await channel.GetMessageAsync(quote.messageId);
+        if (message is null) {
+            await RespondAsync($"❌ Failed to update quote! (message {quote.messageId} not found)", ephemeral: true);
+            return;
+        }
+
+        _db.Remove(quote);
+        _db.Add(await Util.MessageToQuote(quote.name, message, quote));
+
+        try {
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex) {
+            Console.WriteLine(ex.ToString());
+            await RespondAsync("❌ Failed to update quote!", ephemeral: true);
+            return;
+        }
+        await RespondAsync($"Update quote **{quote.name}**!");
+    }
+
+    [SlashCommand("count", "Gets the total amount of quotes."), UsedImplicitly]
+    public async Task GetQuoteCount() {
+        int count = await _db.quotes.CountAsync();
+        await RespondAsync($"There are **{count}** total quotes.");
     }
 
     public static bool TrySaveQuote(ApplicationDbContext db, Quote quote) {

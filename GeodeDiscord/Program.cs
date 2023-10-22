@@ -12,7 +12,11 @@ public class Program {
     private readonly IServiceProvider _services = new ServiceCollection()
         .AddDbContext<ApplicationDbContext>()
         .AddSingleton(new DiscordSocketConfig {
-            GatewayIntents = GatewayIntents.GuildIntegrations | GatewayIntents.MessageContent
+            GatewayIntents =
+                GatewayIntents.GuildIntegrations |
+                GatewayIntents.GuildMessages |
+                GatewayIntents.Guilds |
+                GatewayIntents.MessageContent
         })
         .AddSingleton<DiscordSocketClient>()
         .AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>()))
