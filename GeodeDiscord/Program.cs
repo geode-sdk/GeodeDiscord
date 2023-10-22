@@ -9,12 +9,7 @@ namespace GeodeDiscord;
 public class Program {
     private readonly IServiceProvider _services = new ServiceCollection()
         .AddSingleton(new DiscordSocketConfig {
-            GatewayIntents =
-                GatewayIntents.GuildMessageReactions |
-                GatewayIntents.GuildIntegrations |
-                GatewayIntents.GuildEmojis |
-                GatewayIntents.GuildMessages |
-                GatewayIntents.MessageContent
+            GatewayIntents = GatewayIntents.GuildIntegrations | GatewayIntents.MessageContent
         })
         .AddSingleton<DiscordSocketClient>()
         .AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>()))

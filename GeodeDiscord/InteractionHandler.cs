@@ -4,7 +4,8 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 
-using Microsoft.Extensions.DependencyInjection;
+using GeodeDiscord.Database.Entities;
+using GeodeDiscord.Modules;
 
 namespace GeodeDiscord;
 
@@ -34,7 +35,8 @@ public class InteractionHandler {
 
     private async Task ReadyAsync() {
 #if DEBUG
-        await _handler.RegisterCommandsToGuildAsync(504366353965121587);
+        await _handler.RegisterCommandsToGuildAsync(
+            ulong.Parse(Environment.GetEnvironmentVariable("DISCORD_TEST_GUILD") ?? "0"));
 #else
         await _handler.RegisterCommandsGloballyAsync();
 #endif
@@ -60,22 +62,29 @@ public class InteractionHandler {
 
     private async Task HandleReaction(Cacheable<IUserMessage, ulong> cachedMessage,
         Cacheable<IMessageChannel, ulong> cachedChannel, SocketReaction reaction) {
-        DiscordSocketClient client = _services.GetRequiredService<DiscordSocketClient>();
-        if (reaction.UserId == client.CurrentUser.Id)
+        if (reaction.UserId == _client.CurrentUser.Id)
             return;
 
         // 💬
         if (reaction.Emote.Name != "\ud83d\udcac")
             return;
 
-        IUserMessage message = await cachedMessage.GetOrDownloadAsync();
-        if (message.Author.IsBot || message.Author.IsWebhook)
+        IUserMessage? message = await cachedMessage.GetOrDownloadAsync();
+        IMessageChannel? channel = await cachedChannel.GetOrDownloadAsync();
+        if (message is null || channel is null)
             return;
 
-        IMessageChannel channel = await cachedChannel.GetOrDownloadAsync();
-        await channel.SendMessageAsync(
-            allowedMentions: AllowedMentions.None,
-            embeds: Util.MessageToEmbeds(message).ToArray()
-        );
+        if (message.Author.Id == _client.CurrentUser.Id) {
+            await channel.SendMessageAsync($"<@{reaction.UserId}>: ❌ Cannot quote myself!");
+            return;
+        }
+
+        Quote quote = await Util.MessageToQuote(Guid.NewGuid().ToString(), message);
+        bool res = await QuoteModule.TrySaveQuote(quote);
+        if (!res) {
+            await channel.SendMessageAsync($"<@{reaction.UserId}>: ❌ Failed to save quote!");
+            return;
+        }
+        await channel.SendMessageAsync($"Quote saved as **{quote.name}**!");
     }
 }
