@@ -2,19 +2,28 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 
+using GeodeDiscord.Database;
 using GeodeDiscord.Database.Entities;
 
 using JetBrains.Annotations;
+
+using Microsoft.EntityFrameworkCore;
 
 namespace GeodeDiscord.Modules;
 
 [UsedImplicitly]
 public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
-    public required DiscordSocketClient client { get; set; }
+    private readonly DiscordSocketClient _client;
+    private readonly ApplicationDbContext _db;
+
+    public QuoteModule(DiscordSocketClient client, ApplicationDbContext db) {
+        _client = client;
+        _db = db;
+    }
 
     [MessageCommand("Add quote"), UsedImplicitly]
     public async Task AddQuote(IMessage message) {
-        if (message.Author.Id == client.CurrentUser.Id) {
+        if (message.Author.Id == _client.CurrentUser.Id) {
             await RespondAsync("❌ Cannot quote myself!", ephemeral: true);
             return;
         }
@@ -25,7 +34,7 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
                 message = realMessage;
         }
         Quote quote = await Util.MessageToQuote(Guid.NewGuid().ToString(), message);
-        bool res = await TrySaveQuote(quote);
+        bool res = TrySaveQuote(_db, quote);
         if (!res) {
             await RespondAsync("❌ Failed to save quote!", ephemeral: true);
             return;
@@ -33,8 +42,28 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
         await RespondAsync($"Quote saved as **{quote.name}**!");
     }
 
-    public static async Task<bool> TrySaveQuote(Quote quote) {
-        // TODO
-        return false;
+    [SlashCommand("quote", "Gets a random quote.")]
+    public async Task GetRandomQuote() {
+        if (!_db.quotes.Any()) {
+            await RespondAsync("❌ There no quotes yet!", ephemeral: true);
+            return;
+        }
+        Quote quote = _db.quotes.OrderBy(_ => EF.Functions.Random()).First();
+        await RespondAsync(
+            allowedMentions: AllowedMentions.None,
+            embeds: await Util.QuoteToEmbeds(Context.Guild, quote).ToArrayAsync()
+        );
+    }
+
+    public static bool TrySaveQuote(ApplicationDbContext db, Quote quote) {
+        try {
+            db.Add(quote);
+            db.SaveChanges();
+            return true;
+        }
+        catch (Exception ex) {
+            Console.WriteLine(ex.ToString());
+            return false;
+        }
     }
 }

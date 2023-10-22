@@ -2,12 +2,15 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 
+using GeodeDiscord.Database;
+
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GeodeDiscord;
 
 public class Program {
     private readonly IServiceProvider _services = new ServiceCollection()
+        .AddDbContext<ApplicationDbContext>()
         .AddSingleton(new DiscordSocketConfig {
             GatewayIntents = GatewayIntents.GuildIntegrations | GatewayIntents.MessageContent
         })

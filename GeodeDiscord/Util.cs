@@ -18,7 +18,7 @@ public static class Util {
         .ToList();
 
     private static async Task<IMessage?> GetReplyAsync(IMessage message) {
-        if (message.Channel is null ||
+        if (message.Channel is null || message.Reference is null ||
             message.Reference.ChannelId != message.Channel.Id ||
             !message.Reference.MessageId.IsSpecified)
             return null;
@@ -33,12 +33,21 @@ public static class Util {
         List<string> images = GetMessageImages(message);
         int extraAttachments = message.Attachments.Count - images.Count;
         ulong replyAuthorId = (await GetReplyAsync(message))?.Author.Id ?? 0;
-        return new Quote(
-            message.Id, name, message.Channel is null ? null : message.GetJumpUrl(), DateTimeOffset.Now,
-            authorName, authorIcon, message.Author.Id,
-            images, extraAttachments,
-            message.Content, replyAuthorId
-        );
+        return new Quote {
+            messageId = message.Id,
+            name = name,
+            jumpUrl = message.Channel is null ? null : message.GetJumpUrl(),
+            timestamp = DateTimeOffset.Now,
+
+            authorName = authorName,
+            authorIcon = authorIcon,
+            authorId = message.Author.Id,
+
+            images = string.Join('|', images),
+            extraAttachments = extraAttachments,
+            content = message.Content,
+            replyAuthorId = replyAuthorId
+        };
     }
 
     public static async IAsyncEnumerable<Embed> QuoteToEmbeds(IGuild guild, Quote quote) {
@@ -59,6 +68,11 @@ public static class Util {
         description.AppendLine(quote.content);
         description.AppendLine();
         description.Append(quote.jumpUrl ?? "*[ missing jump url ]*");
+        description.Append(" by <@");
+        description.Append(quote.authorId);
+        description.Append('>');
+
+        string[] images = quote.images.Split('|');
 
         StringBuilder footer = new();
         if (quote.extraAttachments != 0) {
@@ -70,14 +84,14 @@ public static class Util {
 
         yield return new EmbedBuilder()
             .WithTitle($"Quote {quote.name}")
-            .WithAuthor(authorName, authorIcon, $"discord:/users/{quote.authorId}")
+            .WithAuthor(authorName, authorIcon)
             .WithDescription(description.ToString())
-            .WithImageUrl(quote.images.Count > 0 ? quote.images[0] : null)
+            .WithImageUrl(images.Length > 0 ? images[0] : null)
             .WithTimestamp(quote.timestamp)
             .WithFooter(footer.ToString())
             .Build();
 
-        foreach (string image in quote.images.Skip(1))
+        foreach (string image in images.Skip(1))
             yield return new EmbedBuilder()
                 .WithImageUrl(image)
                 .Build();

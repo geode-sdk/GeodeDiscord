@@ -4,6 +4,7 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 
+using GeodeDiscord.Database;
 using GeodeDiscord.Database.Entities;
 using GeodeDiscord.Modules;
 
@@ -13,11 +14,14 @@ public class InteractionHandler {
     private readonly DiscordSocketClient _client;
     private readonly InteractionService _handler;
     private readonly IServiceProvider _services;
+    private readonly ApplicationDbContext _db;
 
-    public InteractionHandler(DiscordSocketClient client, InteractionService handler, IServiceProvider services) {
+    public InteractionHandler(DiscordSocketClient client, InteractionService handler, IServiceProvider services,
+        ApplicationDbContext db) {
         _client = client;
         _handler = handler;
         _services = services;
+        _db = db;
     }
 
     public async Task InitializeAsync() {
@@ -80,7 +84,7 @@ public class InteractionHandler {
         }
 
         Quote quote = await Util.MessageToQuote(Guid.NewGuid().ToString(), message);
-        bool res = await QuoteModule.TrySaveQuote(quote);
+        bool res = QuoteModule.TrySaveQuote(_db, quote);
         if (!res) {
             await channel.SendMessageAsync($"<@{reaction.UserId}>: ❌ Failed to save quote!");
             return;
