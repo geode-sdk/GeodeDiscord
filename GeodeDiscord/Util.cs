@@ -23,11 +23,13 @@ public static class Util {
         return refMessage ?? null;
     }
 
-    public static async Task<Quote> MessageToQuote(string name, IMessage message, Quote? original = null) {
+    public static Task<Quote> MessageToQuote(string name, IMessage message, Quote? original = null) =>
+        MessageToQuote(name, message, DateTimeOffset.Now, original);
+    public static async Task<Quote> MessageToQuote(string name, IMessage message, DateTimeOffset timestamp,
+        Quote? original = null) {
         List<string> images = GetMessageImages(message);
         int extraAttachments = message.Attachments.Count - images.Count;
         ulong replyAuthorId = (await GetReplyAsync(message))?.Author.Id ?? 0;
-        DateTimeOffset timestamp = DateTimeOffset.Now;
         return new Quote {
             name = name,
             messageId = message.Id,

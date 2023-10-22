@@ -1,4 +1,7 @@
-﻿using Discord;
+﻿using System.Net;
+using System.Text.Json;
+
+using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 
@@ -263,6 +266,76 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
     public async Task GetQuoteCount() {
         int count = await _db.quotes.CountAsync();
         await RespondAsync($"There are **{count}** total quotes.");
+    }
+
+    private readonly record struct UberBotQuote
+        (string id, string channel, string messageId, long time);
+
+    [SlashCommand("import", "Imports quotes from UB3R-B0T's API response."), UsedImplicitly]
+    public async Task ImportQuotes(Attachment attachment) {
+        await RespondAsync($"Importing quotes from {attachment.Filename}: downloading attachment");
+
+        string data;
+        using (HttpClient client = new()) {
+            data = await client.GetStringAsync(attachment.Url);
+        }
+
+        UberBotQuote[]? toImport;
+        try {
+            await ModifyOriginalResponseAsync(prop =>
+                prop.Content = $"Importing quotes from {attachment.Filename}: deserializing JSON");
+            toImport = JsonSerializer.Deserialize<UberBotQuote[]>(data);
+        }
+        catch (JsonException) {
+            await FollowupAsync("❌ Failed to import quotes! (failed to deserialize JSON)");
+            return;
+        }
+        if (toImport is null) {
+            await FollowupAsync("❌ Failed to import quotes! (Deserialize returned null)");
+            return;
+        }
+
+        int importedQuotes = 0;
+        for (int i = 0; i < toImport.Length; i++) {
+            await ModifyOriginalResponseAsync(prop =>
+                prop.Content = $"Importing quotes from {attachment.Filename}: {i}/{toImport.Length}");
+            (string id, string channelName, string messageIdStr, long time) = toImport[i];
+            if (!ulong.TryParse(messageIdStr, out ulong messageId)) {
+                await FollowupAsync($"⚠️ Failed to import quote {id}! (invalid message ID)");
+                continue;
+            }
+            DateTimeOffset timestamp = DateTimeOffset.FromUnixTimeSeconds(time);
+
+            IMessageChannel? channel = Context.Guild.TextChannels.FirstOrDefault(ch => ch.Name == channelName) ??
+                Context.Guild.StageChannels.FirstOrDefault(ch => ch.Name == channelName) ??
+                Context.Guild.VoiceChannels.FirstOrDefault(ch => ch.Name == channelName);
+            if (channel is null) {
+                await RespondAsync($"⚠️ Failed to import quote {id}! (channel {channelName} not found)");
+                continue;
+            }
+
+            IMessage? message = await channel.GetMessageAsync(messageId);
+            if (message is null) {
+                await RespondAsync($"⚠️ Failed to import quote {id}! (message {messageId} not found)");
+                continue;
+            }
+
+            _db.Add(await Util.MessageToQuote(id, message, timestamp));
+
+            importedQuotes++;
+        }
+
+        try {
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex) {
+            Console.WriteLine(ex.ToString());
+            await FollowupAsync("❌ Failed to import quotes! (error when writing to the database)");
+            return;
+        }
+
+        await ModifyOriginalResponseAsync(prop =>
+            prop.Content = $"Imported {importedQuotes} quotes from {attachment.Filename}.");
     }
 
     public static bool TrySaveQuote(ApplicationDbContext db, Quote quote) {
