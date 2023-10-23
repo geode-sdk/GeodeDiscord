@@ -56,7 +56,7 @@ public static class Util {
         description.Append(quote.authorId);
         description.Append('>');
         if (quote.replyAuthorId != 0) {
-            description.Append(" in response to <@");
+            description.Append(" to <@");
             description.Append(quote.replyAuthorId);
             description.Append('>');
         }
