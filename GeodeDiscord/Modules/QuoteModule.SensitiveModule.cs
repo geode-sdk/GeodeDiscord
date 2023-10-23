@@ -33,7 +33,7 @@ public partial class QuoteModule {
             }
             if (!await CheckSensitive(quote))
                 return;
-            await RespondWithModalAsync<RenameModal>($"quote/rename-modal:{name}");
+            await RespondWithModalAsync<RenameModal>($"quote/sensitive/rename-modal:{name}");
         }
 
         public class RenameModal : IModal {

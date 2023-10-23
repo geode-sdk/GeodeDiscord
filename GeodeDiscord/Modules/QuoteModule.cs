@@ -44,9 +44,9 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
         await RespondAsync(
             $"Quote {quote.jumpUrl} saved as **{quote.name}**!",
             components: new ComponentBuilder()
-                .WithButton("Show", $"quote/get-button:{quote.name}", ButtonStyle.Secondary, new Emoji("🚿"))
-                .WithButton("Rename", $"quote/rename-button:{quote.name}", ButtonStyle.Secondary, new Emoji("📝"))
-                .WithButton("Delete", $"quote/delete-button:{quote.name}", ButtonStyle.Secondary, new Emoji("❌"))
+                .WithButton("Show", $"quote/sensitive/get-button:{quote.name}", ButtonStyle.Secondary, new Emoji("🚿"))
+                .WithButton("Rename", $"quote/sensitive/rename-button:{quote.name}", ButtonStyle.Secondary, new Emoji("📝"))
+                .WithButton("Delete", $"quote/sensitive/delete-button:{quote.name}", ButtonStyle.Secondary, new Emoji("❌"))
                 .Build()
         );
     }
