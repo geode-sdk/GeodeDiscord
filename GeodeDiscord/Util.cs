@@ -61,7 +61,7 @@ public static class Util {
             description.Append('>');
         }
         description.Append(" in ");
-        description.AppendLine(quote.jumpUrl ?? "*[ missing jump url ]*");
+        description.AppendLine(quote.jumpUrl ?? "<unknown>");
         description.AppendLine();
         description.Append("Quoted by <");
         if (quote.quoterId == 0) {
