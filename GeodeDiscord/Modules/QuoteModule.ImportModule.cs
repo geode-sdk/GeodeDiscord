@@ -12,38 +12,43 @@ using JetBrains.Annotations;
 
 namespace GeodeDiscord.Modules;
 
-public partial class QuoteModule {
-    [Group("import", "Import quotes."), RequireUserPermission(GuildPermission.Administrator)]
-    public class ImportModule : InteractionModuleBase<SocketInteractionContext> {
-        private readonly ApplicationDbContext _db;
+[Group("quote-import", "Import quotes."), DefaultMemberPermissions(GuildPermission.Administrator)]
+public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext> {
+    private readonly ApplicationDbContext _db;
 
-        public ImportModule(ApplicationDbContext db) => _db = db;
+    public QuoteImportModule(ApplicationDbContext db) => _db = db;
 
-        [SlashCommand("manual-quoter", "Sets the quoter of a quote."), EnabledInDm(false),
-         UsedImplicitly]
-        public async Task ManualQuoter([Autocomplete(typeof(QuoteAutocompleteHandler))] string name, IUser newQuoter) {
-            Quote? quote = await _db.quotes.FindAsync(name);
-            if (quote is null) {
-                await RespondAsync($"❌ Quote not found!", ephemeral: true);
-                return;
-            }
-            _db.Remove(quote);
-            _db.Add(quote.WithQuoter(newQuoter.Id));
-            try { await _db.SaveChangesAsync(); }
-            catch (Exception ex) {
-                Console.WriteLine(ex.ToString());
-                await RespondAsync("❌ Failed to change quote!", ephemeral: true);
-                return;
-            }
-            await RespondAsync($"Quote **{quote.name}** quoter changed to `{newQuoter.Id}`!");
+    [SlashCommand("manual-quoter", "Sets the quoter of a quote."), EnabledInDm(false),
+     UsedImplicitly]
+    public async Task ManualQuoter([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] string name,
+        IUser newQuoter) {
+        Quote? quote = await _db.quotes.FindAsync(name);
+        if (quote is null) {
+            await RespondAsync($"❌ Quote not found!", ephemeral: true);
+            return;
         }
+        _db.Remove(quote);
+        _db.Add(quote.WithQuoter(newQuoter.Id));
+        try { await _db.SaveChangesAsync(); }
+        catch (Exception ex) {
+            Console.WriteLine(ex.ToString());
+            await RespondAsync("❌ Failed to change quote!", ephemeral: true);
+            return;
+        }
+        await RespondAsync($"Quote **{quote.name}** quoter changed to `{newQuoter.Id}`!");
+    }
 
-        private readonly record struct UberBotQuote
-            (string id, string nick, string channel, string messageId, string text, long time);
+    private readonly record struct UberBotQuote
+        (string id, string nick, string channel, string messageId, string text, long time);
 
-        [SlashCommand("uber-bot", "Imports quotes from UB3R-B0T's API response."), EnabledInDm(false),
+    [Group("uber-bot", "UB3R-B0T")]
+    public class UberBotModule : InteractionModuleBase<SocketInteractionContext> {
+        private readonly ApplicationDbContext _db;
+        public UberBotModule(ApplicationDbContext db) => _db = db;
+
+        [SlashCommand("import", "Imports quotes from UB3R-B0T's API response."), EnabledInDm(false),
          UsedImplicitly]
-        public async Task UberBot(Attachment attachment) {
+        public async Task Import(Attachment attachment) {
             await DeferAsync();
             await FollowupAsync($"Importing quotes from {attachment.Filename}: downloading attachment");
 
@@ -71,7 +76,7 @@ public partial class QuoteModule {
                     await ModifyOriginalResponseAsync(prop =>
                         prop.Content =
                             $"Importing quotes from {attachment.Filename}: {i}/{toImport.Length.ToString()}");
-                if (await UberBotSingle(toImport[i]))
+                if (await ImportSingle(toImport[i]))
                     importedQuotes++;
             }
 
@@ -85,7 +90,7 @@ public partial class QuoteModule {
             await ModifyOriginalResponseAsync(prop =>
                 prop.Content = $"Imported {importedQuotes} quotes from {attachment.Filename}.");
         }
-        private async Task<bool> UberBotSingle(UberBotQuote oldQuote) {
+        private async Task<bool> ImportSingle(UberBotQuote oldQuote) {
             (string id, string nick, string channelName, string messageIdStr, string text, long time) = oldQuote;
             if (!ulong.TryParse(messageIdStr, out ulong messageId)) {
                 await FollowupAsync($"⚠️ Failed to import quote {id}! (invalid message ID)");
@@ -94,7 +99,7 @@ public partial class QuoteModule {
             DateTimeOffset timestamp = DateTimeOffset.FromUnixTimeSeconds(time);
 
             if (string.IsNullOrWhiteSpace(channelName)) {
-                await UberBotInfer(nick, id, messageId, timestamp, channelName, text);
+                await ImportInfer(nick, id, messageId, timestamp, channelName, text);
                 return true;
             }
 
@@ -126,7 +131,7 @@ public partial class QuoteModule {
                             msg.Content.Contains($" as #{id} ")).FirstOrDefaultAsync();
                     if (uberResponse is not null) {
                         Regex regex = new($"New quote added by (.*?) as #{id} ");
-                        quoter = await UberBotInferUser("quoter", regex.Match(uberResponse.Content).Groups[1].Value, id);
+                        quoter = await ImportInferUser("quoter", regex.Match(uberResponse.Content).Groups[1].Value, id);
                     }
                 }
                 if (quoter is null) {
@@ -142,9 +147,9 @@ public partial class QuoteModule {
                 return false;
             }
         }
-        private async Task UberBotInfer(string nick, string id, ulong messageId, DateTimeOffset timestamp,
+        private async Task ImportInfer(string nick, string id, ulong messageId, DateTimeOffset timestamp,
             string channelName, string text) {
-            RestGuildUser? user = await UberBotInferUser("author", nick, id);
+            RestGuildUser? user = await ImportInferUser("author", nick, id);
 
             await FollowupAsync($"⚠️ Quote {id} imported with potentially missing data!");
 
@@ -166,7 +171,7 @@ public partial class QuoteModule {
                 content = text
             });
         }
-        private async Task<RestGuildUser?> UberBotInferUser(string who, string nick, string id) {
+        private async Task<RestGuildUser?> ImportInferUser(string who, string nick, string id) {
             RestGuildUser? user;
             try {
                 string searchNick = nick.ToLowerInvariant();

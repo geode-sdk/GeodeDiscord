@@ -152,7 +152,7 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
         );
     }
 
-    private class QuoteAutocompleteHandler : AutocompleteHandler {
+    public class QuoteAutocompleteHandler : AutocompleteHandler {
         private readonly ApplicationDbContext _db;
         public QuoteAutocompleteHandler(ApplicationDbContext db) => _db = db;
 
