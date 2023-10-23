@@ -4,30 +4,22 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 
-using GeodeDiscord.Database;
-using GeodeDiscord.Database.Entities;
-using GeodeDiscord.Modules;
-
 namespace GeodeDiscord;
 
 public class InteractionHandler {
     private readonly DiscordSocketClient _client;
     private readonly InteractionService _handler;
     private readonly IServiceProvider _services;
-    private readonly ApplicationDbContext _db;
 
-    public InteractionHandler(DiscordSocketClient client, InteractionService handler, IServiceProvider services,
-        ApplicationDbContext db) {
+    public InteractionHandler(DiscordSocketClient client, InteractionService handler, IServiceProvider services) {
         _client = client;
         _handler = handler;
         _services = services;
-        _db = db;
     }
 
     public async Task InitializeAsync() {
         _client.Ready += ReadyAsync;
         _client.InteractionCreated += HandleInteraction;
-        _client.ReactionAdded += HandleReaction;
 
         _handler.Log += log => {
             Console.WriteLine(log.ToString());
@@ -50,65 +42,23 @@ public class InteractionHandler {
         try {
             SocketInteractionContext context = new(_client, interaction);
             IResult? result = await _handler.ExecuteCommandAsync(context, _services);
-            if (!result.IsSuccess) {
-                switch (result.Error) {
-                    case InteractionCommandError.UnmetPrecondition:
-                        // TODO
-                        break;
-                }
+            if (result.IsSuccess)
+                return;
+            Console.Write(result.Error.ToString());
+            Console.Write(": ");
+            Console.WriteLine(result.ErrorReason);
+            switch (result.Error) {
+                case InteractionCommandError.UnmetPrecondition:
+                    await interaction.RespondAsync($"❌ Unmet precondition! ({result.ErrorReason})");
+                    break;
+                default:
+                    await interaction.RespondAsync($"❌ Unknown error! ({result.ErrorReason})");
+                    break;
             }
         }
         catch {
             if (interaction.Type is InteractionType.ApplicationCommand)
                 await interaction.GetOriginalResponseAsync().ContinueWith(async msg => await msg.Result.DeleteAsync());
         }
-    }
-
-    private async Task HandleReaction(Cacheable<IUserMessage, ulong> cachedMessage,
-        Cacheable<IMessageChannel, ulong> cachedChannel, SocketReaction reaction) {
-        if (reaction.UserId == _client.CurrentUser.Id)
-            return;
-
-        // 💬
-        if (reaction.Emote.Name != "\ud83d\udcac")
-            return;
-
-        IUserMessage? message = await cachedMessage.GetOrDownloadAsync();
-        IMessageChannel? channel = await cachedChannel.GetOrDownloadAsync();
-        if (message is null || channel is null)
-            return;
-
-        // couldn't find a better way of doing this
-        SocketGuildUser? guildUser = null;
-        foreach (SocketGuild guild in _client.Guilds) {
-            guildUser = guild.GetUser(reaction.UserId);
-            if (guildUser is not null)
-                break;
-        }
-        if (guildUser is null)
-            return;
-        if (guildUser.IsBot)
-            return;
-
-        await channel.TriggerTypingAsync();
-
-        if (!guildUser.GuildPermissions.Has(GuildPermission.Administrator) &&
-            guildUser.Roles.All(role => role.Name != "\ud83d\udcac")) {
-            await channel.SendMessageAsync($"<@{reaction.UserId}>: ❌ Cannot quote without the quote role!");
-            return;
-        }
-
-        if (message.Author.Id == _client.CurrentUser.Id) {
-            await channel.SendMessageAsync($"<@{reaction.UserId}>: ❌ Cannot quote myself!");
-            return;
-        }
-
-        Quote quote = await Util.MessageToQuote(Quote.GetRandomName(), message);
-        bool res = QuoteModule.TrySaveQuote(_db, quote);
-        if (!res) {
-            await channel.SendMessageAsync($"<@{reaction.UserId}>: ❌ Failed to save quote!");
-            return;
-        }
-        await channel.SendMessageAsync($"Quote saved as **{quote.name}**!");
     }
 }
