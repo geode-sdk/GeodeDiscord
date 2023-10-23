@@ -373,7 +373,7 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
 
                     authorId = user?.Id ?? 0,
                     replyAuthorId = 0,
-                    jumpUrl = null,
+                    jumpUrl = channelName,
 
                     images = "",
                     extraAttachments = 0,
