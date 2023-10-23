@@ -141,7 +141,7 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
     }
 
     [SlashCommand("get", "Gets a quote with the specified name."), UsedImplicitly]
-    public async Task GetQuoteByName(string name) {
+    public async Task GetQuoteByName([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
         Quote? quote = await _db.quotes.FindAsync(name);
         if (quote is null) {
             await RespondAsync("❌ Quote not found!", ephemeral: true);
@@ -174,21 +174,8 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
         );
     }
 
-    [SlashCommand("find", "Finds the first quote that contains the specified string."), UsedImplicitly]
-    public async Task FindQuote(string search) {
-        Quote? quote = await _db.quotes.FirstOrDefaultAsync(q => q.name.Contains(search) || q.content.Contains(search));
-        if (quote is null) {
-            await RespondAsync("❌ Quote not found!", ephemeral: true);
-            return;
-        }
-        await RespondAsync(
-            allowedMentions: AllowedMentions.None,
-            embeds: Util.QuoteToEmbeds(quote).ToArray()
-        );
-    }
-
     [SlashCommand("rename", "Renames a quote with the specified name."), UsedImplicitly]
-    public async Task RenameQuote(string oldName, string newName) {
+    public async Task RenameQuote([Autocomplete(typeof(QuoteAutocompleteHandler))] string oldName, string newName) {
         Quote? quote = await _db.quotes.FindAsync(oldName);
         if (quote is null) {
             await RespondAsync($"❌ Quote **{oldName}** not found!", ephemeral: true);
@@ -212,7 +199,7 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
     }
 
     [SlashCommand("delete", "Deletes a quote with the specified name."), UsedImplicitly]
-    public async Task DeleteQuote(string name) {
+    public async Task DeleteQuote([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
         Quote? quote = await _db.quotes.FindAsync(name);
         if (quote is null) {
             await RespondAsync("❌ Quote not found!", ephemeral: true);
@@ -231,7 +218,7 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
     }
 
     [SlashCommand("update", "Updates a quote by re-fetching the message."), UsedImplicitly]
-    public async Task UpdateQuote(string name) {
+    public async Task UpdateQuote([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
         Quote? quote = await _db.quotes.FindAsync(name);
         if (quote is null) {
             await RespondAsync("❌ Quote not found!", ephemeral: true);
@@ -275,6 +262,26 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
     public async Task GetQuoteCount() {
         int count = await _db.quotes.CountAsync();
         await RespondAsync($"There are **{count}** total quotes.");
+    }
+
+    private class QuoteAutocompleteHandler : AutocompleteHandler {
+        private readonly ApplicationDbContext _db;
+        public QuoteAutocompleteHandler(ApplicationDbContext db) => _db = db;
+
+        public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
+            IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider services) {
+            string value = autocompleteInteraction.Data.Current.Value as string ?? string.Empty;
+            return Task.FromResult(AutocompletionResult.FromSuccess(_db.quotes
+                .Where(q =>
+                    EF.Functions.Glob(q.name, $"*{value}*") ||
+                    EF.Functions.Glob(q.content, $"*{value}*"))
+                .Take(25)
+                .AsEnumerable()
+                .Select(q => {
+                    string name = $"{q.name}: {q.content}";
+                    return new AutocompleteResult(name.Length <= 100 ? name : $"{name[..97]}...", q.name);
+                })));
+        }
     }
 
     private readonly record struct UberBotQuote
