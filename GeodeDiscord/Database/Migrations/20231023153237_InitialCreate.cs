@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace GeodeDiscord.Migrations
+namespace GeodeDiscord.Database.Migrations
 {
     /// <inheritdoc />
     public partial class InitialCreate : Migration
@@ -20,6 +20,7 @@ namespace GeodeDiscord.Migrations
                     channelId = table.Column<ulong>(type: "INTEGER", nullable: false),
                     createdAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                     lastEditedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    quoterId = table.Column<ulong>(type: "INTEGER", nullable: false),
                     authorId = table.Column<ulong>(type: "INTEGER", nullable: false),
                     replyAuthorId = table.Column<ulong>(type: "INTEGER", nullable: false),
                     jumpUrl = table.Column<string>(type: "TEXT", nullable: true),

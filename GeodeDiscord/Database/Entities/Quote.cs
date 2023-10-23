@@ -1,7 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
-using System.Diagnostics.CodeAnalysis;
 
-namespace GeodeDiscord.Entities;
+namespace GeodeDiscord.Database.Entities;
 
 public class Quote {
     // basic
@@ -11,6 +10,7 @@ public class Quote {
     public required ulong channelId { get; init; }
     public required DateTimeOffset createdAt { get; init; }
     public required DateTimeOffset lastEditedAt { get; init; }
+    public required ulong quoterId { get; init; }
 
     // author
     public required ulong authorId { get; init; }
@@ -30,6 +30,22 @@ public class Quote {
         channelId = channelId,
         createdAt = createdAt,
         lastEditedAt = lastEditedAt,
+        quoterId = quoterId,
+        authorId = authorId,
+        replyAuthorId = replyAuthorId,
+        jumpUrl = jumpUrl,
+        images = images,
+        extraAttachments = extraAttachments,
+        content = content
+    };
+
+    public Quote WithQuoter(ulong quoterId) => new() {
+        name = name,
+        messageId = messageId,
+        channelId = channelId,
+        createdAt = createdAt,
+        lastEditedAt = lastEditedAt,
+        quoterId = quoterId,
         authorId = authorId,
         replyAuthorId = replyAuthorId,
         jumpUrl = jumpUrl,

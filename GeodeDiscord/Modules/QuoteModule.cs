@@ -1,11 +1,8 @@
-﻿using System.Text.Json;
-
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
-using Discord.Rest;
-using Discord.WebSocket;
 
-using GeodeDiscord.Entities;
+using GeodeDiscord.Database;
+using GeodeDiscord.Database.Entities;
 
 using JetBrains.Annotations;
 
@@ -14,21 +11,13 @@ using Microsoft.EntityFrameworkCore;
 namespace GeodeDiscord.Modules;
 
 [Group("quote", "Quote other people's messages."), UsedImplicitly]
-public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
-    private readonly DiscordSocketClient _client;
+public partial class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
     private readonly ApplicationDbContext _db;
 
-    public QuoteModule(DiscordSocketClient client, ApplicationDbContext db) {
-        _client = client;
-        _db = db;
-    }
+    public QuoteModule(ApplicationDbContext db) => _db = db;
 
-    [MessageCommand("Add quote"), UsedImplicitly]
-    public async Task AddQuote(IMessage message) {
-        if (message.Author.Id == _client.CurrentUser.Id) {
-            await RespondAsync("❌ Cannot quote myself!", ephemeral: true);
-            return;
-        }
+    [MessageCommand("Add quote"), EnabledInDm(false), UsedImplicitly]
+    public async Task Add(IMessage message) {
         IMessageChannel? channel = await Context.Interaction.GetChannelAsync();
         if (channel is not null) {
             IMessage? realMessage = await channel.GetMessageAsync(message.Id);
@@ -39,7 +28,7 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
         int max = !await _db.quotes.AnyAsync() ? 0 : await _db.quotes.AsAsyncEnumerable()
             .MaxAsync(q => !int.TryParse(q.name, out int n) ? int.MinValue : n);
 
-        Quote quote = await Util.MessageToQuote((max + 1).ToString(), message);
+        Quote quote = await Util.MessageToQuote(Context.User.Id, (max + 1).ToString(), message);
         _db.Add(quote);
 
         try {
@@ -51,40 +40,25 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
             return;
         }
 
+        Console.WriteLine();
         await RespondAsync(
-            $"Quote saved as **{quote.name}**!",
+            $"Quote {quote.jumpUrl} saved as **{quote.name}**!",
             components: new ComponentBuilder()
-                .WithButton("Rename", $"quote-rename-button:{quote.name}", emote: new Emoji("📝"))
+                .WithButton("Show", $"quote/get-button:{quote.name}", ButtonStyle.Secondary, new Emoji("🚿"))
+                .WithButton("Rename", $"quote/rename-button:{quote.name}", ButtonStyle.Secondary, new Emoji("📝"))
+                .WithButton("Delete", $"quote/delete-button:{quote.name}", ButtonStyle.Secondary, new Emoji("❌"))
                 .Build()
         );
     }
 
-    [ComponentInteraction("quote-rename-button:*", true), UsedImplicitly]
-    public async Task RenameQuoteButton(string name) {
-        if (!_db.quotes.Any()) {
-            await RespondAsync("❌ There are no quotes yet!", ephemeral: true);
-            return;
-        }
-        if (await _db.quotes.FindAsync(name) is null) {
-            await RespondAsync("❌ Quote not found!", ephemeral: true);
-            return;
-        }
-        await RespondWithModalAsync<QuoteRenameModal>($"quote-rename-modal:{name}");
+    [SlashCommand("count", "Gets the total amount of quotes."), EnabledInDm(false), UsedImplicitly]
+    public async Task GetCount() {
+        int count = await _db.quotes.CountAsync();
+        await RespondAsync($"There are **{count}** total quotes.");
     }
 
-    public class QuoteRenameModal : IModal {
-        public string Title => "Rename Quote";
-
-        [InputLabel("New Name"), ModalTextInput("newName", placeholder: "geode creepypasta", maxLength: 30),
-         UsedImplicitly]
-        public string newName { get; set; } = "";
-    }
-
-    [ModalInteraction("quote-rename-modal:*", true), UsedImplicitly]
-    public async Task RenameQuoteModal(string name, QuoteRenameModal modal) => await RenameQuote(name, modal.newName);
-
-    [SlashCommand("random", "Gets a random quote."), UsedImplicitly]
-    public async Task GetRandomQuote() {
+    [SlashCommand("random", "Gets a random quote."), EnabledInDm(false), UsedImplicitly]
+    public async Task GetRandom() {
         if (!_db.quotes.Any()) {
             await RespondAsync("❌ There are no quotes yet!", ephemeral: true);
             return;
@@ -96,8 +70,9 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
         );
     }
 
-    [SlashCommand("user", "Gets a random quote from the specified user."), UsedImplicitly]
-    public async Task GetUserQuote(IUser user) {
+    [SlashCommand("user", "Gets a random quote from the specified user."), EnabledInDm(false),
+     UsedImplicitly]
+    public async Task GetRandomByUser(IUser user) {
         if (!_db.quotes.Any()) {
             await RespondAsync("❌ There are no quotes yet!", ephemeral: true);
             return;
@@ -116,8 +91,9 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
         );
     }
 
-    [SlashCommand("user-id", "Gets a random quote from the specified user by ID."), UsedImplicitly]
-    public async Task GetUserQuote(string user) {
+    [SlashCommand("user-id", "Gets a random quote from the specified user by ID."), EnabledInDm(false),
+     UsedImplicitly]
+    public async Task GetRandomByUser(string user) {
         if (!_db.quotes.Any()) {
             await RespondAsync("❌ There are no quotes yet!", ephemeral: true);
             return;
@@ -140,8 +116,9 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
         );
     }
 
-    [SlashCommand("get", "Gets a quote with the specified name."), UsedImplicitly]
-    public async Task GetQuoteByName([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
+    [SlashCommand("get", "Gets a quote with the specified name."), EnabledInDm(false),
+     ComponentInteraction("get-button:*"), UsedImplicitly]
+    public async Task GetByName([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
         Quote? quote = await _db.quotes.FindAsync(name);
         if (quote is null) {
             await RespondAsync("❌ Quote not found!", ephemeral: true);
@@ -153,8 +130,9 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
         );
     }
 
-    [SlashCommand("get-message-id", "Gets a quote for the specified message."), UsedImplicitly]
-    public async Task GetQuoteByMessageId(string message) {
+    [SlashCommand("get-message", "Gets a quote for the specified message."), EnabledInDm(false),
+     UsedImplicitly]
+    public async Task GetByMessage(string message) {
         if (!_db.quotes.Any()) {
             await RespondAsync("❌ There are no quotes yet!", ephemeral: true);
             return;
@@ -174,96 +152,6 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
         );
     }
 
-    [SlashCommand("rename", "Renames a quote with the specified name."), UsedImplicitly]
-    public async Task RenameQuote([Autocomplete(typeof(QuoteAutocompleteHandler))] string oldName, string newName) {
-        Quote? quote = await _db.quotes.FindAsync(oldName);
-        if (quote is null) {
-            await RespondAsync($"❌ Quote **{oldName}** not found!", ephemeral: true);
-            return;
-        }
-        if (await _db.quotes.FindAsync(newName) is not null) {
-            await RespondAsync($"❌ Quote **${newName}** already exists!", ephemeral: true);
-            return;
-        }
-        _db.Remove(quote);
-        _db.Add(quote.WithName(newName));
-        try {
-            await _db.SaveChangesAsync();
-        }
-        catch (Exception ex) {
-            Console.WriteLine(ex.ToString());
-            await RespondAsync("❌ Failed to rename quote!", ephemeral: true);
-            return;
-        }
-        await RespondAsync($"Quote *{quote.name}* renamed to **{newName}**!");
-    }
-
-    [SlashCommand("delete", "Deletes a quote with the specified name."), UsedImplicitly]
-    public async Task DeleteQuote([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
-        Quote? quote = await _db.quotes.FindAsync(name);
-        if (quote is null) {
-            await RespondAsync("❌ Quote not found!", ephemeral: true);
-            return;
-        }
-        _db.Remove(quote);
-        try {
-            await _db.SaveChangesAsync();
-        }
-        catch (Exception ex) {
-            Console.WriteLine(ex.ToString());
-            await RespondAsync("❌ Failed to delete quote!", ephemeral: true);
-            return;
-        }
-        await RespondAsync($"Deleted quote *{quote.name}*!");
-    }
-
-    [SlashCommand("update", "Updates a quote by re-fetching the message."), UsedImplicitly]
-    public async Task UpdateQuote([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
-        Quote? quote = await _db.quotes.FindAsync(name);
-        if (quote is null) {
-            await RespondAsync("❌ Quote not found!", ephemeral: true);
-            return;
-        }
-
-        if (quote.channelId == 0) {
-            await RespondAsync("❌ Failed to update quote! (channel ID not set)", ephemeral: true);
-            return;
-        }
-
-        IMessageChannel? channel = Context.Guild.GetTextChannel(quote.channelId) ??
-            Context.Guild.GetStageChannel(quote.channelId) ??
-            Context.Guild.GetVoiceChannel(quote.channelId);
-        if (channel is null) {
-            await RespondAsync($"❌ Failed to update quote! (channel {quote.channelId} not found)", ephemeral: true);
-            return;
-        }
-
-        IMessage? message = await channel.GetMessageAsync(quote.messageId);
-        if (message is null) {
-            await RespondAsync($"❌ Failed to update quote! (message {quote.messageId} not found)", ephemeral: true);
-            return;
-        }
-
-        _db.Remove(quote);
-        _db.Add(await Util.MessageToQuote(quote.name, message, quote));
-
-        try {
-            await _db.SaveChangesAsync();
-        }
-        catch (Exception ex) {
-            Console.WriteLine(ex.ToString());
-            await RespondAsync("❌ Failed to update quote!", ephemeral: true);
-            return;
-        }
-        await RespondAsync($"Update quote **{quote.name}**!");
-    }
-
-    [SlashCommand("count", "Gets the total amount of quotes."), UsedImplicitly]
-    public async Task GetQuoteCount() {
-        int count = await _db.quotes.CountAsync();
-        await RespondAsync($"There are **{count}** total quotes.");
-    }
-
     private class QuoteAutocompleteHandler : AutocompleteHandler {
         private readonly ApplicationDbContext _db;
         public QuoteAutocompleteHandler(ApplicationDbContext db) => _db = db;
@@ -271,138 +159,21 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
         public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
             IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider services) {
             string value = autocompleteInteraction.Data.Current.Value as string ?? string.Empty;
-            return Task.FromResult(AutocompletionResult.FromSuccess(_db.quotes
-                .Where(q =>
-                    EF.Functions.Glob(q.name, $"*{value}*") ||
-                    EF.Functions.Glob(q.content, $"*{value}*"))
-                .Take(25)
-                .AsEnumerable()
-                .Select(q => {
-                    string name = $"{q.name}: {q.content}";
-                    return new AutocompleteResult(name.Length <= 100 ? name : $"{name[..97]}...", q.name);
-                })));
-        }
-    }
-
-    private readonly record struct UberBotQuote
-        (string id, string nick, string channel, string messageId, string text, long time);
-
-    [SlashCommand("import", "Imports quotes from UB3R-B0T's API response."), UsedImplicitly]
-    public async Task ImportQuotes(Attachment attachment) {
-        await DeferAsync();
-        await FollowupAsync($"Importing quotes from {attachment.Filename}: downloading attachment");
-
-        string data;
-        using (HttpClient client = new()) {
-            data = await client.GetStringAsync(attachment.Url);
-        }
-
-        UberBotQuote[]? toImport;
-        try {
-            await ModifyOriginalResponseAsync(prop =>
-                prop.Content = $"Importing quotes from {attachment.Filename}: deserializing JSON");
-            toImport = JsonSerializer.Deserialize<UberBotQuote[]>(data);
-        }
-        catch (JsonException) {
-            await FollowupAsync("❌ Failed to import quotes! (failed to deserialize JSON)");
-            return;
-        }
-        if (toImport is null) {
-            await FollowupAsync("❌ Failed to import quotes! (Deserialize returned null)");
-            return;
-        }
-
-        int importedQuotes = 0;
-        for (int i = 0; i < toImport.Length; i++) {
-            if (i % 10 == 0)
-                await ModifyOriginalResponseAsync(prop =>
-                    prop.Content = $"Importing quotes from {attachment.Filename}: {i}/{toImport.Length.ToString()}");
-            if (await ImportQuote(toImport[i]))
-                importedQuotes++;
-        }
-
-        try {
-            await _db.SaveChangesAsync();
-        }
-        catch (Exception ex) {
-            Console.WriteLine(ex.ToString());
-            await FollowupAsync("❌ Failed to import quotes! (error when writing to the database)");
-            return;
-        }
-
-        await ModifyOriginalResponseAsync(prop =>
-            prop.Content = $"Imported {importedQuotes} quotes from {attachment.Filename}.");
-    }
-    private async Task<bool> ImportQuote(UberBotQuote oldQuote) {
-        (string id, string nick, string channelName, string messageIdStr, string text, long time) = oldQuote;
-        if (!ulong.TryParse(messageIdStr, out ulong messageId)) {
-            await FollowupAsync($"⚠️ Failed to import quote {id}! (invalid message ID)");
-            return false;
-        }
-        DateTimeOffset timestamp = DateTimeOffset.FromUnixTimeSeconds(time);
-
-        if (string.IsNullOrWhiteSpace(channelName)) {
-            RestGuildUser? user;
             try {
-                string searchNick = nick.ToLowerInvariant();
-                user = (await Context.Guild.SearchUsersAsync(searchNick)).FirstOrDefault();
-                if (user is null)
-                    await FollowupAsync($"⚠️ Couldn't get user {nick} for quote {id}! (user is null)");
-                else
-                    await FollowupAsync($"🗒️ User for quote {id} detected as <@{user.Id}>",
-                        allowedMentions: AllowedMentions.None);
+                return Task.FromResult(AutocompletionResult.FromSuccess(_db.quotes
+                    .Where(q =>
+                        EF.Functions.Glob(q.name, $"*{value}*") ||
+                        EF.Functions.Glob(q.content, $"*{value}*"))
+                    .Take(25)
+                    .AsEnumerable()
+                    .Select(q => {
+                        string name = $"{q.name}: {q.content}";
+                        return new AutocompleteResult(name.Length <= 100 ? name : $"{name[..97]}...", q.name);
+                    })));
             }
             catch (Exception ex) {
-                Console.WriteLine(ex.ToString());
-                await FollowupAsync($"⚠️ Couldn't get user {nick} for quote {id}!");
-                user = null;
+                return Task.FromResult(AutocompletionResult.FromError(ex));
             }
-
-            await FollowupAsync($"⚠️ Quote {id} imported with potentially missing data!");
-
-            _db.Add(new Quote {
-                name = id,
-                messageId = messageId,
-                channelId = 0,
-                createdAt = timestamp,
-                lastEditedAt = timestamp,
-
-                authorId = user?.Id ?? 0,
-                replyAuthorId = 0,
-                jumpUrl = $"#{channelName}",
-
-                images = "",
-                extraAttachments = 0,
-
-                content = text
-            });
-
-            return true;
-        }
-
-        try {
-            IMessageChannel? channel =
-                Context.Guild.TextChannels.FirstOrDefault(ch => ch.Name == channelName) ??
-                Context.Guild.StageChannels.FirstOrDefault(ch => ch.Name == channelName) ??
-                Context.Guild.VoiceChannels.FirstOrDefault(ch => ch.Name == channelName);
-            if (channel is null) {
-                await FollowupAsync($"⚠️ Failed to import quote {id}! (channel {channelName} not found)");
-                return false;
-            }
-
-            IMessage? message = await channel.GetMessageAsync(messageId);
-            if (message is null) {
-                await FollowupAsync($"⚠️ Failed to import quote {id}! (message {messageId} not found)");
-                return false;
-            }
-
-            _db.Add(await Util.MessageToQuote(id, message, timestamp));
-            return true;
-        }
-        catch (Exception ex) {
-            Console.WriteLine(ex.ToString());
-            await FollowupAsync($"⚠️ Failed to import quote {id}! (failed to access channel or message)");
-            return false;
         }
     }
 }

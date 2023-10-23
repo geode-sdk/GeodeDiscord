@@ -2,6 +2,8 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 
+using GeodeDiscord.Database;
+
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GeodeDiscord;
@@ -17,7 +19,10 @@ public class Program {
                 GatewayIntents.MessageContent
         })
         .AddSingleton<DiscordSocketClient>()
-        .AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>()))
+        .AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>(),
+            new InteractionServiceConfig {
+                InteractionCustomIdDelimiters = new[] { '/' }
+            }))
         .AddSingleton<InteractionHandler>()
         .BuildServiceProvider();
 
@@ -27,8 +32,6 @@ public class Program {
         .GetResult();
 
     private async Task MainAsync() {
-        await _services.GetRequiredService<InteractionHandler>().InitializeAsync();
-
         DiscordSocketClient client = _services.GetRequiredService<DiscordSocketClient>();
 
         client.Log += log => {
@@ -39,6 +42,12 @@ public class Program {
             Console.WriteLine($"{client.CurrentUser} is connected!");
             return Task.CompletedTask;
         };
+        client.ApplicationCommandCreated += c => {
+            Console.WriteLine(c.Name);
+            return Task.CompletedTask;
+        };
+
+        await _services.GetRequiredService<InteractionHandler>().InitializeAsync();
 
         await client.LoginAsync(TokenType.Bot, Environment.GetEnvironmentVariable("DISCORD_TOKEN"));
         await client.StartAsync();

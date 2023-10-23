@@ -2,7 +2,7 @@
 
 using Discord;
 
-using GeodeDiscord.Entities;
+using GeodeDiscord.Database.Entities;
 
 namespace GeodeDiscord;
 
@@ -23,10 +23,10 @@ public static class Util {
         return refMessage ?? null;
     }
 
-    public static Task<Quote> MessageToQuote(string name, IMessage message, Quote? original = null) =>
-        MessageToQuote(name, message, DateTimeOffset.Now, original);
-    public static async Task<Quote> MessageToQuote(string name, IMessage message, DateTimeOffset timestamp,
-        Quote? original = null) {
+    public static Task<Quote> MessageToQuote(ulong quoterId, string name, IMessage message, Quote? original = null) =>
+        MessageToQuote(quoterId, name, message, DateTimeOffset.Now, original);
+    public static async Task<Quote> MessageToQuote(ulong quoterId, string name, IMessage message,
+        DateTimeOffset timestamp, Quote? original = null) {
         List<string> images = GetMessageImages(message);
         int extraAttachments = message.Attachments.Count - images.Count;
         ulong replyAuthorId = (await GetReplyAsync(message))?.Author.Id ?? 0;
@@ -36,6 +36,7 @@ public static class Util {
             channelId = message.Channel?.Id ?? 0,
             createdAt = original?.createdAt ?? timestamp,
             lastEditedAt = timestamp,
+            quoterId = quoterId,
 
             authorId = message.Author.Id,
             replyAuthorId = replyAuthorId,
@@ -60,10 +61,18 @@ public static class Util {
             description.Append('>');
         }
         description.Append(" in ");
-        description.Append(quote.jumpUrl ?? "*[ missing jump url ]*");
+        description.AppendLine(quote.jumpUrl ?? "*[ missing jump url ]*");
+        description.AppendLine();
+        description.Append("Quoted by <");
+        if (quote.quoterId == 0) {
+            description.Append("unknown");
+        }
+        else {
+            description.Append('@');
+            description.Append(quote.quoterId);
+        }
+        description.Append('>');
         if (quote.createdAt != quote.lastEditedAt) {
-            description.AppendLine();
-            description.AppendLine();
             description.Append("Last edited at <t:");
             description.Append(quote.lastEditedAt.ToUnixTimeSeconds());
             description.Append(":f>");

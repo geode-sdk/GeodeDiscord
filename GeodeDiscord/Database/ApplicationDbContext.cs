@@ -1,8 +1,8 @@
-﻿using GeodeDiscord.Entities;
+﻿using GeodeDiscord.Database.Entities;
 
 using Microsoft.EntityFrameworkCore;
 
-namespace GeodeDiscord;
+namespace GeodeDiscord.Database;
 
 public class ApplicationDbContext : DbContext {
     public DbSet<Quote> quotes { get; set; } = null!;
