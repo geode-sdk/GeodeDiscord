@@ -16,6 +16,8 @@ public class Program {
                 GatewayIntents.GuildIntegrations |
                 GatewayIntents.GuildMessages |
                 GatewayIntents.Guilds |
+                GatewayIntents.GuildMessageTyping |
+                GatewayIntents.GuildMessageReactions |
                 GatewayIntents.MessageContent
         })
         .AddSingleton<DiscordSocketClient>()

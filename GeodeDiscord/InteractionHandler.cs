@@ -78,8 +78,6 @@ public class InteractionHandler {
         if (message is null || channel is null)
             return;
 
-        channel.EnterTypingState();
-
         // couldn't find a better way of doing this
         SocketGuildUser? guildUser = null;
         foreach (SocketGuild guild in _client.Guilds) {
@@ -87,7 +85,14 @@ public class InteractionHandler {
             if (guildUser is not null)
                 break;
         }
-        if (guildUser is not null && !guildUser.GuildPermissions.Has(GuildPermission.Administrator) &&
+        if (guildUser is null)
+            return;
+        if (guildUser.IsBot)
+            return;
+
+        await channel.TriggerTypingAsync();
+
+        if (!guildUser.GuildPermissions.Has(GuildPermission.Administrator) &&
             guildUser.Roles.All(role => role.Name != "\ud83d\udcac")) {
             await channel.SendMessageAsync($"<@{reaction.UserId}>: ❌ Cannot quote without the quote role!");
             return;
