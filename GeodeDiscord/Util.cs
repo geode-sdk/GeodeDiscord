@@ -61,9 +61,8 @@ public static class Util {
             description.Append('>');
         }
         description.Append(" in ");
-        description.AppendLine(quote.jumpUrl ?? "<unknown>");
-        description.AppendLine();
-        description.Append("Quoted by <");
+        description.Append(quote.jumpUrl ?? "<unknown>");
+        description.Append(" by <");
         if (quote.quoterId == 0) {
             description.Append("unknown");
         }
@@ -73,6 +72,8 @@ public static class Util {
         }
         description.Append('>');
         if (quote.createdAt != quote.lastEditedAt) {
+            description.AppendLine();
+            description.AppendLine();
             description.Append("Last edited at <t:");
             description.Append(quote.lastEditedAt.ToUnixTimeSeconds());
             description.Append(":f>");
