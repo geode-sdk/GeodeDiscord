@@ -21,7 +21,7 @@ public partial class QuoteModule {
 
         [SlashCommand("manual-quoter", "Sets the quoter of a quote."), EnabledInDm(false),
          UsedImplicitly]
-        public async Task ManualAuthor([Autocomplete(typeof(QuoteAutocompleteHandler))] string name, IUser newQuoter) {
+        public async Task ManualQuoter([Autocomplete(typeof(QuoteAutocompleteHandler))] string name, IUser newQuoter) {
             Quote? quote = await _db.quotes.FindAsync(name);
             if (quote is null) {
                 await RespondAsync($"❌ Quote not found!", ephemeral: true);
@@ -158,7 +158,7 @@ public partial class QuoteModule {
 
                 authorId = user?.Id ?? 0,
                 replyAuthorId = 0,
-                jumpUrl = $"#{channelName}",
+                jumpUrl = string.IsNullOrWhiteSpace(channelName) ? null : $"#{channelName}",
 
                 images = "",
                 extraAttachments = 0,
