@@ -2,8 +2,6 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 
-using GeodeDiscord.Database;
-
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GeodeDiscord;

@@ -2,7 +2,7 @@
 
 using Discord;
 
-using GeodeDiscord.Database.Entities;
+using GeodeDiscord.Entities;
 
 namespace GeodeDiscord;
 

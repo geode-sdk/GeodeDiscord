@@ -1,7 +1,7 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Diagnostics.CodeAnalysis;
 
-namespace GeodeDiscord.Database.Entities;
+namespace GeodeDiscord.Entities;
 
 public class Quote {
     // basic
