@@ -214,7 +214,7 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
             await RespondAsync("❌ Failed to delete quote!", ephemeral: true);
             return;
         }
-        await RespondAsync($"Deleted quote **{quote.name}**!");
+        await RespondAsync($"Deleted quote *{quote.name}*!");
     }
 
     [SlashCommand("update", "Updates a quote by re-fetching the message."), UsedImplicitly]
