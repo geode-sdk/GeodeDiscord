@@ -35,8 +35,13 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
             if (realMessage is not null)
                 message = realMessage;
         }
-        Quote quote = await Util.MessageToQuote(Quote.GetRandomName(), message);
+
+        int max = !await _db.quotes.AnyAsync() ? 0 : await _db.quotes.AsAsyncEnumerable()
+            .MaxAsync(q => !int.TryParse(q.name, out int n) ? int.MinValue : n);
+
+        Quote quote = await Util.MessageToQuote((max + 1).ToString(), message);
         _db.Add(quote);
+
         try {
             await _db.SaveChangesAsync();
         }
@@ -45,6 +50,7 @@ public class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
             await RespondAsync("❌ Failed to save quote!", ephemeral: true);
             return;
         }
+
         await RespondAsync(
             $"Quote saved as **{quote.name}**!",
             components: new ComponentBuilder()

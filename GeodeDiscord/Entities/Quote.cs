@@ -37,13 +37,4 @@ public class Quote {
         extraAttachments = extraAttachments,
         content = content
     };
-
-    [SuppressMessage("ReSharper", "StringLiteralTypo")]
-    public static string GetRandomName() {
-        const string possibleChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-        Span<char> chars = stackalloc char[7];
-        for (int i = 0; i < 7; i++)
-            chars[i] = possibleChars[Random.Shared.Next(possibleChars.Length)];
-        return new string(chars);
-    }
 }
