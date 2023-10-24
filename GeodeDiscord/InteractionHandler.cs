@@ -30,12 +30,11 @@ public class InteractionHandler {
     }
 
     private async Task ReadyAsync() {
-#if DEBUG
-        await _handler.RegisterCommandsToGuildAsync(
-            ulong.Parse(Environment.GetEnvironmentVariable("DISCORD_TEST_GUILD") ?? "0"));
-#else
-        await _handler.RegisterCommandsGloballyAsync();
-#endif
+        if (Environment.GetEnvironmentVariable("DISCORD_TEST_GUILD") is null)
+            await _handler.RegisterCommandsGloballyAsync();
+        else
+            await _handler.RegisterCommandsToGuildAsync(
+                ulong.Parse(Environment.GetEnvironmentVariable("DISCORD_TEST_GUILD") ?? "0"));
     }
 
     private async Task HandleInteraction(SocketInteraction interaction) {

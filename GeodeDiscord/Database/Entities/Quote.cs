@@ -1,12 +1,16 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+using Microsoft.EntityFrameworkCore;
 
 namespace GeodeDiscord.Database.Entities;
 
+[Index(nameof(name), IsUnique = true), Index(nameof(authorId))]
 public class Quote {
     // basic
-    [Key]
-    public required string name { get; init; }
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.None)]
     public required ulong messageId { get; init; }
+    public required string name { get; set; }
     public required ulong channelId { get; init; }
     public required DateTimeOffset createdAt { get; init; }
     public required DateTimeOffset lastEditedAt { get; init; }
@@ -23,34 +27,4 @@ public class Quote {
 
     // content
     public required string content { get; init; }
-
-    public Quote WithName(string name) => new() {
-        name = name,
-        messageId = messageId,
-        channelId = channelId,
-        createdAt = createdAt,
-        lastEditedAt = lastEditedAt,
-        quoterId = quoterId,
-        authorId = authorId,
-        replyAuthorId = replyAuthorId,
-        jumpUrl = jumpUrl,
-        images = images,
-        extraAttachments = extraAttachments,
-        content = content
-    };
-
-    public Quote WithQuoter(ulong quoterId) => new() {
-        name = name,
-        messageId = messageId,
-        channelId = channelId,
-        createdAt = createdAt,
-        lastEditedAt = lastEditedAt,
-        quoterId = quoterId,
-        authorId = authorId,
-        replyAuthorId = replyAuthorId,
-        jumpUrl = jumpUrl,
-        images = images,
-        extraAttachments = extraAttachments,
-        content = content
-    };
 }

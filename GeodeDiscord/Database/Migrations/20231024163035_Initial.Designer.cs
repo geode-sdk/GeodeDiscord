@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GeodeDiscord.Database.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20231023153237_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20231024163035_Initial")]
+    partial class Initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -22,8 +22,8 @@ namespace GeodeDiscord.Database.Migrations
 
             modelBuilder.Entity("GeodeDiscord.Database.Entities.Quote", b =>
                 {
-                    b.Property<string>("name")
-                        .HasColumnType("TEXT");
+                    b.Property<ulong>("messageId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<ulong>("authorId")
                         .HasColumnType("INTEGER");
@@ -51,8 +51,9 @@ namespace GeodeDiscord.Database.Migrations
                     b.Property<DateTimeOffset>("lastEditedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<ulong>("messageId")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<ulong>("quoterId")
                         .HasColumnType("INTEGER");
@@ -60,7 +61,12 @@ namespace GeodeDiscord.Database.Migrations
                     b.Property<ulong>("replyAuthorId")
                         .HasColumnType("INTEGER");
 
-                    b.HasKey("name");
+                    b.HasKey("messageId");
+
+                    b.HasIndex("authorId");
+
+                    b.HasIndex("name")
+                        .IsUnique();
 
                     b.ToTable("quotes");
                 });

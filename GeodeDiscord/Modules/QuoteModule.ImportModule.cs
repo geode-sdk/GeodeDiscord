@@ -10,6 +10,8 @@ using GeodeDiscord.Database.Entities;
 
 using JetBrains.Annotations;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace GeodeDiscord.Modules;
 
 [Group("quote-import", "Import quotes."), DefaultMemberPermissions(GuildPermission.Administrator)]
@@ -22,13 +24,26 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
      UsedImplicitly]
     public async Task ManualQuoter([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] string name,
         IUser newQuoter) {
-        Quote? quote = await _db.quotes.FindAsync(name);
+        Quote? quote = await _db.quotes.FirstOrDefaultAsync(q => q.name == name);
         if (quote is null) {
-            await RespondAsync($"❌ Quote not found!", ephemeral: true);
+            await RespondAsync("❌ Quote not found!", ephemeral: true);
             return;
         }
         _db.Remove(quote);
-        _db.Add(quote.WithQuoter(newQuoter.Id));
+        _db.Add(new Quote {
+            name = quote.name,
+            messageId = quote.messageId,
+            channelId = quote.channelId,
+            createdAt = quote.createdAt,
+            lastEditedAt = quote.lastEditedAt,
+            quoterId = newQuoter.Id,
+            authorId = quote.authorId,
+            replyAuthorId = quote.replyAuthorId,
+            jumpUrl = quote.jumpUrl,
+            images = quote.images,
+            extraAttachments = quote.extraAttachments,
+            content = quote.content
+        });
         try { await _db.SaveChangesAsync(); }
         catch (Exception ex) {
             Console.WriteLine(ex.ToString());

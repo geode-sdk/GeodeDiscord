@@ -19,8 +19,8 @@ namespace GeodeDiscord.Database.Migrations
 
             modelBuilder.Entity("GeodeDiscord.Database.Entities.Quote", b =>
                 {
-                    b.Property<string>("name")
-                        .HasColumnType("TEXT");
+                    b.Property<ulong>("messageId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<ulong>("authorId")
                         .HasColumnType("INTEGER");
@@ -48,8 +48,9 @@ namespace GeodeDiscord.Database.Migrations
                     b.Property<DateTimeOffset>("lastEditedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<ulong>("messageId")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<ulong>("quoterId")
                         .HasColumnType("INTEGER");
@@ -57,7 +58,12 @@ namespace GeodeDiscord.Database.Migrations
                     b.Property<ulong>("replyAuthorId")
                         .HasColumnType("INTEGER");
 
-                    b.HasKey("name");
+                    b.HasKey("messageId");
+
+                    b.HasIndex("authorId");
+
+                    b.HasIndex("name")
+                        .IsUnique();
 
                     b.ToTable("quotes");
                 });

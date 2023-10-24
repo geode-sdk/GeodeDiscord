@@ -6,13 +6,14 @@ using GeodeDiscord.Database.Entities;
 
 using JetBrains.Annotations;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace GeodeDiscord.Modules;
 
 public partial class QuoteModule {
     [Group("sensitive", "Sensitive quote commands.")]
     public class SensitiveModule : InteractionModuleBase<SocketInteractionContext> {
         private readonly ApplicationDbContext _db;
-
         public SensitiveModule(ApplicationDbContext db) => _db = db;
 
         private async Task<bool> CheckSensitive(Quote quote) {
@@ -25,18 +26,17 @@ public partial class QuoteModule {
         }
 
         [ComponentInteraction("rename-button:*"), UsedImplicitly]
-        public async Task RenameQuoteButton(string name) {
-            Quote? quote = await _db.quotes.FindAsync(name);
+        public async Task RenameButton(string messageId) {
+            Quote? quote = await _db.quotes.FindAsync(ulong.Parse(messageId));
             if (quote is null) {
                 await RespondAsync("❌ Quote not found!", ephemeral: true);
                 return;
             }
             if (!await CheckSensitive(quote))
                 return;
-            await RespondWithModalAsync<RenameModal>($"quote/sensitive/rename-modal:{name}");
+            await RespondWithModalAsync<RenameQuoteModal>($"quote/sensitive/rename-modal:{messageId}");
         }
-
-        public class RenameModal : IModal {
+        public class RenameQuoteModal : IModal {
             public string Title => "Rename Quote";
 
             [InputLabel("New Name"), ModalTextInput(nameof(newName), placeholder: "geode creepypasta", maxLength: 30),
@@ -45,37 +45,41 @@ public partial class QuoteModule {
         }
 
         [ModalInteraction("rename-modal:*"), UsedImplicitly]
-        public async Task RenameQuoteModal(string name, RenameModal modal) =>
-            await RenameQuote(name, modal.newName);
+        public async Task RenameModal(string messageId, RenameQuoteModal modal) =>
+            await RenameQuote(await _db.quotes.FindAsync(ulong.Parse(messageId)), modal.newName);
 
         [SlashCommand("rename", "Renames a quote with the specified name."), UsedImplicitly]
-        public async Task RenameQuote([Autocomplete(typeof(QuoteAutocompleteHandler))] string oldName, string newName) {
-            Quote? quote = await _db.quotes.FindAsync(oldName);
+        public async Task Rename([Autocomplete(typeof(QuoteAutocompleteHandler))] string oldName, string newName) =>
+            await RenameQuote(await _db.quotes.FirstOrDefaultAsync(q => q.name == oldName), newName);
+        public async Task RenameQuote(Quote? quote, string newName) {
             if (quote is null) {
-                await RespondAsync($"❌ Quote **{oldName}** not found!", ephemeral: true);
+                await RespondAsync("❌ Quote not found!", ephemeral: true);
                 return;
             }
             if (!await CheckSensitive(quote))
                 return;
-            if (await _db.quotes.FindAsync(newName) is not null) {
+            if (await _db.quotes.AnyAsync(q => q.name == newName)) {
                 await RespondAsync($"❌ Quote **${newName}** already exists!", ephemeral: true);
                 return;
             }
-            _db.Remove(quote);
-            _db.Add(quote.WithName(newName));
+            string oldName = quote.name;
+            quote.name = newName;
             try { await _db.SaveChangesAsync(); }
             catch (Exception ex) {
                 Console.WriteLine(ex.ToString());
                 await RespondAsync("❌ Failed to rename quote!", ephemeral: true);
                 return;
             }
-            await RespondAsync($"Quote *{quote.name}* renamed to **{newName}**!");
+            await RespondAsync($"Quote *{oldName}* renamed to **{quote.name}**!");
         }
 
-        [SlashCommand("delete", "Deletes a quote with the specified name."),
-         ComponentInteraction("delete-button:*"), UsedImplicitly]
-        public async Task DeleteQuote([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
-            Quote? quote = await _db.quotes.FindAsync(name);
+        [ComponentInteraction("delete-button:*"), UsedImplicitly]
+        public async Task DeleteButton(string messageId) =>
+            await DeleteQuote(await _db.quotes.FindAsync(ulong.Parse(messageId)));
+        [SlashCommand("delete", "Deletes a quote with the specified name."), UsedImplicitly]
+        public async Task Delete([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) =>
+            await DeleteQuote(await _db.quotes.FirstOrDefaultAsync(q => q.name == name));
+        private async Task DeleteQuote(Quote? quote) {
             if (quote is null) {
                 await RespondAsync("❌ Quote not found!", ephemeral: true);
                 return;
@@ -93,8 +97,8 @@ public partial class QuoteModule {
         }
 
         [SlashCommand("update", "Updates a quote by re-fetching the message."), UsedImplicitly]
-        public async Task UpdateQuote([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
-            Quote? quote = await _db.quotes.FindAsync(name);
+        public async Task Update([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
+            Quote? quote = await _db.quotes.FirstOrDefaultAsync(q => q.name == name);
             if (quote is null) {
                 await RespondAsync("❌ Quote not found!", ephemeral: true);
                 return;
