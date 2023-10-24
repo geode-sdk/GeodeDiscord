@@ -73,7 +73,7 @@ public partial class QuoteModule {
         }
 
         [SlashCommand("delete", "Deletes a quote with the specified name."),
-         ComponentInteraction("quote-delete-button:*"), UsedImplicitly]
+         ComponentInteraction("delete-button:*"), UsedImplicitly]
         public async Task DeleteQuote([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
             Quote? quote = await _db.quotes.FindAsync(name);
             if (quote is null) {
