@@ -1,5 +1,6 @@
 ﻿using Discord;
 using Discord.Interactions;
+using Discord.WebSocket;
 
 using GeodeDiscord.Database;
 using GeodeDiscord.Database.Entities;
@@ -14,6 +15,8 @@ namespace GeodeDiscord.Modules;
 public partial class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
     private readonly ApplicationDbContext _db;
     public QuoteModule(ApplicationDbContext db) => _db = db;
+
+    private static event Action<Quote, bool>? onUpdate;
 
     [MessageCommand("Add quote"), EnabledInDm(false), UsedImplicitly]
     public async Task Add(IMessage message) {
@@ -39,14 +42,67 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
         }
 
         await RespondAsync(
-            $"Quote {quote.jumpUrl} saved as **{quote.name}**!",
-            components: new ComponentBuilder()
-                .WithButton("Show", $"quote/get-button:{quote.messageId}", ButtonStyle.Secondary, new Emoji("🚿"))
-                .WithButton("Rename", $"quote/sensitive/rename-button:{quote.messageId}", ButtonStyle.Secondary, new Emoji("📝"))
-                .WithButton("Delete", $"quote/sensitive/delete-button:{quote.messageId}", ButtonStyle.Secondary, new Emoji("❌"))
-                .Build()
+            GetAddMessageContent(quote, true, false),
+            GetAddMessageEmbeds(quote, true, false),
+            allowedMentions: AllowedMentions.None,
+            components: GetAddMessageComponents(quote, true, false)
         );
+        await ContinueAddQuote(quote.messageId);
     }
+
+    [ComponentInteraction("get-button:*"), UsedImplicitly]
+    private async Task GetButton(string messageId) => await DeferAsync();
+
+    private async Task ContinueAddQuote(ulong quoteMessage) {
+        onUpdate += OnUpdate;
+        ulong responseId = (await GetOriginalResponseAsync()).Id;
+        SocketInteraction? interaction = await InteractionUtility.WaitForInteractionAsync(Context.Client,
+            TimeSpan.FromSeconds(20d),
+            inter => inter.Type switch {
+                InteractionType.MessageComponent => inter is SocketMessageComponent msg &&
+                    msg.Message.Id == responseId &&
+                    msg.Data.CustomId == $"quote/get-button:{quoteMessage}",
+                _ => false
+            });
+        onUpdate -= OnUpdate;
+        if (interaction is null) {
+            await ModifyOriginalResponseAsync(msg => msg.Components = new ComponentBuilder().Build());
+            return;
+        }
+        if (await _db.quotes.FindAsync(quoteMessage) is not { } currentQuote)
+            return;
+        await UpdateAddMessage(currentQuote, true, true);
+        await ContinueAddQuote(quoteMessage);
+        return;
+
+        async void OnUpdate(Quote quote, bool exists) {
+            await UpdateAddMessage(quote, exists, false);
+        }
+        async Task UpdateAddMessage(Quote quote, bool exists, bool setShow) {
+            bool hasEmbeds = (await GetOriginalResponseAsync()).Embeds.Count > 0;
+            await ModifyOriginalResponseAsync(msg => {
+                bool show = hasEmbeds || setShow;
+                msg.Content = GetAddMessageContent(quote, exists, show);
+                msg.Embeds = GetAddMessageEmbeds(quote, exists, show);
+                msg.Components = GetAddMessageComponents(quote, exists, show);
+            });
+        }
+    }
+    private static string GetAddMessageContent(Quote quote, bool exists, bool show) =>
+        exists ? show ? "Quote saved!" : $"Quote {quote.jumpUrl} saved as **{quote.name}**!" :
+            $"~~Quote {quote.jumpUrl} saved as *{quote.name}*!~~";
+    private static Embed[] GetAddMessageEmbeds(Quote quote, bool exists, bool show) =>
+        show && exists ? Util.QuoteToEmbeds(quote).ToArray() : Array.Empty<Embed>();
+    private static MessageComponent GetAddMessageComponents(Quote quote, bool exists, bool show) =>
+        !exists ? new ComponentBuilder().Build() :
+            new ComponentBuilder()
+                .WithButton("Show", $"quote/get-button:{quote.messageId}", ButtonStyle.Secondary,
+                    new Emoji("🚿"), null, show)
+                .WithButton("Rename", $"quote/sensitive/rename-button:{quote.messageId}", ButtonStyle.Secondary,
+                    new Emoji("📝"))
+                .WithButton("Delete", $"quote/sensitive/delete-button:{quote.messageId}", ButtonStyle.Secondary,
+                    new Emoji("❌"))
+                .Build();
 
     [SlashCommand("count", "Gets the total amount of quotes."), EnabledInDm(false), UsedImplicitly]
     public async Task GetCount() {
@@ -109,8 +165,7 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
         );
     }
 
-    [SlashCommand("get-message", "Gets a quote for the specified message."),
-     ComponentInteraction("get-button:*"), EnabledInDm(false), UsedImplicitly]
+    [SlashCommand("get-message", "Gets a quote for the specified message."), EnabledInDm(false), UsedImplicitly]
     public async Task GetByMessage(string message) {
         if (!ulong.TryParse(message, out ulong messageId)) {
             await RespondAsync("❌ Invalid message ID!", ephemeral: true);
