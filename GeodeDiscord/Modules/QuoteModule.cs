@@ -115,39 +115,12 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
     }
 
     [SlashCommand("random", "Gets a random quote."), EnabledInDm(false), UsedImplicitly]
-    public async Task GetRandom() {
-        if (!_db.quotes.Any()) {
-            await RespondAsync("❌ There are no quotes yet!", ephemeral: true);
-            return;
-        }
-        Quote quote = _db.quotes.OrderBy(_ => EF.Functions.Random()).First();
-        await RespondAsync(
-            allowedMentions: AllowedMentions.None,
-            embeds: Util.QuoteToEmbeds(quote).ToArray()
-        );
-    }
-
-    [SlashCommand("user", "Gets a random quote from the specified user."), EnabledInDm(false),
-     UsedImplicitly]
-    public Task GetRandomByUser(IUser user) => GetRandomByUser(user.Id);
-
-    [SlashCommand("user-id", "Gets a random quote from the specified user by ID."), EnabledInDm(false),
-     UsedImplicitly]
-    public async Task GetRandomByUser(string user) {
-        if (!ulong.TryParse(user, out ulong userId)) {
-            await RespondAsync("❌ Invalid user ID!", ephemeral: true);
-            return;
-        }
-        await GetRandomByUser(userId);
-    }
-
-    private async Task GetRandomByUser(ulong userId) {
-        if (!_db.quotes.Any(q => q.authorId == userId)) {
+    public async Task GetRandom(IUser? user = null) {
+        if (user is null ? !_db.quotes.Any() : !_db.quotes.Any(q => q.authorId == user.Id)) {
             await RespondAsync("❌ There are no quotes of this user yet!", ephemeral: true);
             return;
         }
-        Quote quote = await _db.quotes
-            .Where(q => q.authorId == userId)
+        Quote quote = await (user is null ? _db.quotes : _db.quotes.Where(q => q.authorId == user.Id))
             .OrderBy(_ => EF.Functions.Random())
             .FirstAsync();
         await RespondAsync(
