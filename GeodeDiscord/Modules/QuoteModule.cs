@@ -153,6 +153,7 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
                 return Task.FromResult(AutocompletionResult.FromSuccess(_db.quotes
                     .Where(q =>
                         q.messageId.ToString() == value ||
+                        q.authorId.ToString() == value ||
                         EF.Functions.Like(q.name, $"%{value}%") ||
                         EF.Functions.Like(q.content, $"%{value}%"))
                     .Take(25)
