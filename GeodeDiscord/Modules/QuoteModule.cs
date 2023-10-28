@@ -55,9 +55,6 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
         await ContinueAddQuote(quote.messageId);
     }
 
-    [ComponentInteraction("get-button:*"), UsedImplicitly]
-    private async Task GetButton(string messageId) => await DeferAsync();
-
     private async Task ContinueAddQuote(ulong quoteMessage) {
         onUpdate += OnUpdate;
         ulong responseId = (await GetOriginalResponseAsync()).Id;
@@ -108,6 +105,8 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
                 .WithButton("Delete", $"quote/sensitive/delete-button:{quote.messageId}", ButtonStyle.Secondary,
                     new Emoji("❌"))
                 .Build();
+    [ComponentInteraction("get-button:*"), UsedImplicitly]
+    private async Task GetButton(string messageId) => await DeferAsync();
 
     [SlashCommand("count", "Gets the total amount of quotes."), EnabledInDm(false), UsedImplicitly]
     public async Task GetCount() {
