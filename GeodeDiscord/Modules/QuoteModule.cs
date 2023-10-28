@@ -192,8 +192,8 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
             try {
                 return Task.FromResult(AutocompletionResult.FromSuccess(_db.quotes
                     .Where(q =>
-                        EF.Functions.Glob(q.name, $"*{value}*") ||
-                        EF.Functions.Glob(q.content, $"*{value}*"))
+                        EF.Functions.Like(q.name, $"%{value}%") ||
+                        EF.Functions.Like(q.content, $"%{value}%"))
                     .Take(25)
                     .AsEnumerable()
                     .Select(q => {
