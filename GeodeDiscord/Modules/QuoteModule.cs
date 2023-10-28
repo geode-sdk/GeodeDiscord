@@ -27,6 +27,11 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
                 message = realMessage;
         }
 
+        if (_db.quotes.Any(q => q.messageId == message.Id)) {
+            await RespondAsync("❌ This message is already quoted!", ephemeral: true);
+            return;
+        }
+
         int max = !await _db.quotes.AnyAsync() ? 0 : await _db.Database
             .SqlQueryRaw<int>("SELECT max(CAST(name AS INTEGER)) as Value FROM quotes")
             .SingleAsync();
