@@ -1,9 +1,12 @@
-﻿using Discord;
+﻿using System.Reflection;
+
+using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 
 using GeodeDiscord.Database;
 
+using Microsoft.EntityFrameworkCore.Sqlite.Query.Internal;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GeodeDiscord;
@@ -26,10 +29,18 @@ public class Program {
         .AddSingleton<InteractionHandler>()
         .BuildServiceProvider();
 
-    private static void Main(string[] args) => new Program()
-        .MainAsync()
-        .GetAwaiter()
-        .GetResult();
+    private static void Main(string[] args) {
+        // 🔥
+#pragma warning disable EF1001
+        (typeof(SqliteObjectToStringTranslator).GetField("TypeMapping", BindingFlags.NonPublic | BindingFlags.Static)?
+            .GetValue(null) as HashSet<Type>)?.Add(typeof(ulong));
+#pragma warning restore EF1001
+
+        new Program()
+            .MainAsync()
+            .GetAwaiter()
+            .GetResult();
+    }
 
     private async Task MainAsync() {
         DiscordSocketClient client = _services.GetRequiredService<DiscordSocketClient>();

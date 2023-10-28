@@ -153,25 +153,8 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
     }
 
     [SlashCommand("get", "Gets a quote with the specified name."), EnabledInDm(false), UsedImplicitly]
-    public async Task GetByName([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
+    public async Task Get([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
         Quote? quote = await _db.quotes.FirstOrDefaultAsync(q => q.name == name);
-        if (quote is null) {
-            await RespondAsync("❌ Quote not found!", ephemeral: true);
-            return;
-        }
-        await RespondAsync(
-            allowedMentions: AllowedMentions.None,
-            embeds: Util.QuoteToEmbeds(quote).ToArray()
-        );
-    }
-
-    [SlashCommand("get-message", "Gets a quote for the specified message."), EnabledInDm(false), UsedImplicitly]
-    public async Task GetByMessage(string message) {
-        if (!ulong.TryParse(message, out ulong messageId)) {
-            await RespondAsync("❌ Invalid message ID!", ephemeral: true);
-            return;
-        }
-        Quote? quote = await _db.quotes.FirstOrDefaultAsync(q => q.messageId == messageId);
         if (quote is null) {
             await RespondAsync("❌ Quote not found!", ephemeral: true);
             return;
@@ -192,6 +175,7 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
             try {
                 return Task.FromResult(AutocompletionResult.FromSuccess(_db.quotes
                     .Where(q =>
+                        q.messageId.ToString() == value ||
                         EF.Functions.Like(q.name, $"%{value}%") ||
                         EF.Functions.Like(q.content, $"%{value}%"))
                     .Take(25)
@@ -202,6 +186,7 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
                     })));
             }
             catch (Exception ex) {
+                Console.WriteLine(ex);
                 return Task.FromResult(AutocompletionResult.FromError(ex));
             }
         }
