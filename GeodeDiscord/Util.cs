@@ -4,6 +4,8 @@ using Discord;
 
 using GeodeDiscord.Database.Entities;
 
+using Serilog.Events;
+
 namespace GeodeDiscord;
 
 public static class Util {
@@ -102,4 +104,14 @@ public static class Util {
                 .WithImageUrl(image)
                 .Build();
     }
+
+    public static LogEventLevel DiscordToSerilogLevel(LogSeverity x) => x switch {
+        LogSeverity.Critical => LogEventLevel.Fatal,
+        LogSeverity.Error => LogEventLevel.Error,
+        LogSeverity.Warning => LogEventLevel.Warning,
+        LogSeverity.Info => LogEventLevel.Information,
+        LogSeverity.Verbose => LogEventLevel.Verbose,
+        LogSeverity.Debug => LogEventLevel.Debug,
+        _ => LogEventLevel.Information
+    };
 }

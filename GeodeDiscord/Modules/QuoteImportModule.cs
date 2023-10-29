@@ -12,6 +12,8 @@ using JetBrains.Annotations;
 
 using Microsoft.EntityFrameworkCore;
 
+using Serilog;
+
 namespace GeodeDiscord.Modules;
 
 [Group("quote-import", "Import quotes."), DefaultMemberPermissions(GuildPermission.Administrator)]
@@ -46,7 +48,7 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
         });
         try { await _db.SaveChangesAsync(); }
         catch (Exception ex) {
-            Console.WriteLine(ex.ToString());
+            Log.Error(ex, "Failed to change quote");
             await RespondAsync("❌ Failed to change quote!", ephemeral: true);
             return;
         }
@@ -65,6 +67,7 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
          UsedImplicitly]
         public async Task Import(Attachment attachment) {
             await DeferAsync();
+            Log.Information("[quote-import] Beginning UB3R-B0T quote import from {File}", attachment.Filename);
             await FollowupAsync($"Importing quotes from {attachment.Filename}: downloading attachment");
 
             string data;
@@ -76,11 +79,13 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
                     prop.Content = $"Importing quotes from {attachment.Filename}: deserializing JSON");
                 toImport = JsonSerializer.Deserialize<UberBotQuote[]>(data);
             }
-            catch (JsonException) {
+            catch (JsonException ex) {
+                Log.Error(ex, "Failed to import quotes");
                 await FollowupAsync("❌ Failed to import quotes! (failed to deserialize JSON)");
                 return;
             }
             if (toImport is null) {
+                Log.Error("Failed to import quotes: toImport is null");
                 await FollowupAsync("❌ Failed to import quotes! (Deserialize returned null)");
                 return;
             }
@@ -97,17 +102,19 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
 
             try { await _db.SaveChangesAsync(); }
             catch (Exception ex) {
-                Console.WriteLine(ex.ToString());
+                Log.Error(ex, "Failed to import quotes");
                 await FollowupAsync("❌ Failed to import quotes! (error when writing to the database)");
                 return;
             }
 
+            Log.Information("[quote-import] Imported {Count} quotes from {File}", importedQuotes, attachment.Filename);
             await ModifyOriginalResponseAsync(prop =>
                 prop.Content = $"Imported {importedQuotes} quotes from {attachment.Filename}.");
         }
         private async Task<bool> ImportSingle(UberBotQuote oldQuote) {
             (string id, string nick, string channelName, string messageIdStr, string text, long time) = oldQuote;
             if (!ulong.TryParse(messageIdStr, out ulong messageId)) {
+                Log.Warning("[quote-import] Failed to import quote {Id}: invalid message ID", id);
                 await FollowupAsync($"⚠️ Failed to import quote {id}! (invalid message ID)");
                 return false;
             }
@@ -124,12 +131,14 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
                     Context.Guild.StageChannels.FirstOrDefault(ch => ch.Name == channelName) ??
                     Context.Guild.VoiceChannels.FirstOrDefault(ch => ch.Name == channelName);
                 if (channel is null) {
+                    Log.Warning("[quote-import] Failed to import quote {Id}: channel {Ch} not found", id, channelName);
                     await FollowupAsync($"⚠️ Failed to import quote {id}! (channel {channelName} not found)");
                     return false;
                 }
 
                 IMessage? message = await channel.GetMessageAsync(messageId);
                 if (message is null) {
+                    Log.Warning("[quote-import] Failed to import quote {Id}: message {Msg} not found", id, messageId);
                     await FollowupAsync($"⚠️ Failed to import quote {id}! (message {messageId} not found)");
                     return false;
                 }
@@ -150,6 +159,7 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
                     }
                 }
                 if (quoter is null) {
+                    Log.Warning("[quote-import] Failed to find quoter of quote {Id}", id);
                     await FollowupAsync($"⚠️ Failed to find quoter of quote {id}!");
                 }
 
@@ -157,8 +167,8 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
                 return true;
             }
             catch (Exception ex) {
-                Console.WriteLine(ex.ToString());
-                await FollowupAsync($"⚠️ Failed to import quote {id}! (failed to access channel or message)");
+                Log.Warning(ex, "Failed to import quote {Id}: could not access channel or message", id);
+                await FollowupAsync($"⚠️ Failed to import quote {id}! (could not access channel or message)");
                 return false;
             }
         }
@@ -166,6 +176,7 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
             string channelName, string text) {
             RestGuildUser? user = await ImportInferUser("author", nick, id);
 
+            Log.Warning("[quote-import] Quote {Id} imported with potentially missing data", id);
             await FollowupAsync($"⚠️ Quote {id} imported with potentially missing data!");
 
             _db.Add(new Quote {
@@ -195,15 +206,19 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
                     searchNick = searchNick[..(searchNick.Length / 2)];
                     user = (await Context.Guild.SearchUsersAsync(searchNick)).FirstOrDefault();
                 }
-                if (user is null)
-                    await FollowupAsync($"⚠️ Couldn't get {who} {nick} for quote {id}! (user is null)");
-                else
-                    await FollowupAsync($"🗒️ Quote {id} {who} inferred as <@{user.Id}>",
+                if (user is null) {
+                    Log.Warning("[quote-import] Could not get {Who} {Nick} for quote {Id}: user is null", who, nick, id);
+                    await FollowupAsync($"⚠️ Could not get {who} {nick} for quote {id}! (user is null)");
+                }
+                else {
+                    Log.Information("[quote-import] Quote {Id} {Who} inferred as {User}", id, who, user.DisplayName);
+                    await FollowupAsync($"🗒️ Quote {id} {who} inferred as {user.Mention}",
                         allowedMentions: AllowedMentions.None);
+                }
             }
             catch (Exception ex) {
-                Console.WriteLine(ex.ToString());
-                await FollowupAsync($"⚠️ Couldn't get {who} {nick} for quote {id}!");
+                Log.Warning(ex, "[quote-import] Could not get {Who} {Nick} for quote {Id}", who, nick, id);
+                await FollowupAsync($"⚠️ Could not get {who} {nick} for quote {id}!");
                 user = null;
             }
             return user;

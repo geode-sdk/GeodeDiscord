@@ -4,6 +4,8 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 
+using Serilog;
+
 namespace GeodeDiscord;
 
 public class InteractionHandler {
@@ -22,7 +24,8 @@ public class InteractionHandler {
         _client.InteractionCreated += HandleInteraction;
 
         _handler.Log += log => {
-            Console.WriteLine(log.ToString());
+            Log.Write(Util.DiscordToSerilogLevel(log.Severity), log.Exception, "[{Source}] {Message}", log.Source,
+                log.Message);
             return Task.CompletedTask;
         };
 
@@ -43,9 +46,7 @@ public class InteractionHandler {
             IResult? result = await _handler.ExecuteCommandAsync(context, _services);
             if (result.IsSuccess)
                 return;
-            Console.Write(result.Error.ToString());
-            Console.Write(": ");
-            Console.WriteLine(result.ErrorReason);
+            Log.Error("Error handling interaction: {Error}. {Reason}", result.Error, result.ErrorReason);
             switch (result.Error) {
                 case InteractionCommandError.UnmetPrecondition:
                     await interaction.RespondAsync($"❌ Unmet precondition! ({result.ErrorReason})");

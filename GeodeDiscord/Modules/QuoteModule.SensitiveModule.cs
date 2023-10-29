@@ -8,6 +8,8 @@ using JetBrains.Annotations;
 
 using Microsoft.EntityFrameworkCore;
 
+using Serilog;
+
 namespace GeodeDiscord.Modules;
 
 public partial class QuoteModule {
@@ -51,7 +53,7 @@ public partial class QuoteModule {
         [SlashCommand("rename", "Renames a quote with the specified name."), UsedImplicitly]
         public async Task Rename([Autocomplete(typeof(QuoteAutocompleteHandler))] string oldName, string newName) =>
             await RenameQuote(await _db.quotes.FirstOrDefaultAsync(q => q.name == oldName), newName, true);
-        public async Task RenameQuote(Quote? quote, string newName, bool shouldRespond) {
+        private async Task RenameQuote(Quote? quote, string newName, bool shouldRespond) {
             if (quote is null) {
                 await RespondAsync("❌ Quote not found!", ephemeral: true);
                 return;
@@ -66,10 +68,12 @@ public partial class QuoteModule {
             quote.name = newName;
             try { await _db.SaveChangesAsync(); }
             catch (Exception ex) {
-                Console.WriteLine(ex.ToString());
+                Log.Error(ex, "[quote/sensitive] Failed to rename quote");
                 await RespondAsync("❌ Failed to rename quote!", ephemeral: true);
                 return;
             }
+            Log.Information("[quote/sensitive] {User} renamed quote {OldName} to {NewName}", Context.User.Id, oldName,
+                quote.name);
             if (shouldRespond)
                 await RespondAsync($"Quote *{oldName}* renamed to **{quote.name}**!");
             else
@@ -93,10 +97,11 @@ public partial class QuoteModule {
             _db.Remove(quote);
             try { await _db.SaveChangesAsync(); }
             catch (Exception ex) {
-                Console.WriteLine(ex.ToString());
+                Log.Error(ex, "Failed to delete quote");
                 await RespondAsync("❌ Failed to delete quote!", ephemeral: true);
                 return;
             }
+            Log.Information("[quote/sensitive] {User} deleted quote {Name}", Context.User.Id, quote.name);
             if (shouldRespond)
                 await RespondAsync($"Deleted quote *{quote.name}*!");
             else
@@ -138,11 +143,12 @@ public partial class QuoteModule {
 
             try { await _db.SaveChangesAsync(); }
             catch (Exception ex) {
-                Console.WriteLine(ex.ToString());
+                Log.Error(ex, "Failed to update quote");
                 await RespondAsync("❌ Failed to update quote!", ephemeral: true);
                 return;
             }
-            await RespondAsync($"Update quote **{quote.name}**!");
+            Log.Information("[quote/sensitive] {User} updated quote {Name}", Context.User.Id, quote.name);
+            await RespondAsync($"Updated quote **{quote.name}**!");
         }
     }
 }

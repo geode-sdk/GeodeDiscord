@@ -9,6 +9,8 @@ using JetBrains.Annotations;
 
 using Microsoft.EntityFrameworkCore;
 
+using Serilog;
+
 namespace GeodeDiscord.Modules;
 
 [Group("quote", "Quote other people's messages."), UsedImplicitly]
@@ -41,7 +43,7 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
 
         try { await _db.SaveChangesAsync(); }
         catch (Exception ex) {
-            Console.WriteLine(ex.ToString());
+            Log.Error(ex, "Failed to save quote");
             await RespondAsync("❌ Failed to save quote!", ephemeral: true);
             return;
         }
@@ -164,7 +166,7 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
                     })));
             }
             catch (Exception ex) {
-                Console.WriteLine(ex);
+                Log.Error(ex, "Quote autocomplete failed");
                 return Task.FromResult(AutocompletionResult.FromError(ex));
             }
         }
