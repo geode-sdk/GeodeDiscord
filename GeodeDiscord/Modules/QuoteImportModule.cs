@@ -124,7 +124,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             DateTimeOffset timestamp = DateTimeOffset.FromUnixTimeSeconds(time);
 
             if (string.IsNullOrWhiteSpace(channelName)) {
-                await ImportInfer(nick, id, messageId, timestamp, channelName, text);
+                await Infer(nick, id, messageId, timestamp, channelName, text);
                 return true;
             }
 
@@ -158,7 +158,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                             msg.Content.Contains($" as #{id} ")).FirstOrDefaultAsync();
                     if (uberResponse is not null) {
                         Regex regex = new($"New quote added by (.*?) as #{id} ");
-                        quoter = await ImportInferUser("quoter", regex.Match(uberResponse.Content).Groups[1].Value, id);
+                        quoter = await InferUser("quoter", regex.Match(uberResponse.Content).Groups[1].Value, id);
                     }
                 }
                 if (quoter is null) {
@@ -166,7 +166,8 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                     await FollowupAsync($"⚠️ Failed to find quoter of quote {id}!");
                 }
 
-                db.Add(await ImportInferManual(await Util.MessageToQuote(quoter?.Id ?? 0, id, message, timestamp), id));
+                Quote quote = await Util.MessageToQuote(quoter?.Id ?? 0, id, message, timestamp);
+                await AddQuote(await InferManual(quote, id, nick));
                 return true;
             }
             catch (Exception ex) {
@@ -175,14 +176,14 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 return false;
             }
         }
-        private async Task ImportInfer(string nick, string id, ulong messageId, DateTimeOffset timestamp,
+        private async Task Infer(string nick, string id, ulong messageId, DateTimeOffset timestamp,
             string channelName, string text) {
-            RestGuildUser? user = await ImportInferUser("author", nick, id);
+            RestGuildUser? user = await InferUser("author", nick, id);
 
             Log.Warning("[quote-import] Quote {Id} imported with potentially missing data", id);
             await FollowupAsync($"⚠️ Quote {id} imported with potentially missing data!");
 
-            db.Add(new Quote {
+            await AddQuote(new Quote {
                 name = id,
                 messageId = messageId,
                 channelId = 0,
@@ -200,7 +201,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 content = text
             });
         }
-        private async Task<RestGuildUser?> ImportInferUser(string who, string nick, string id) {
+        private async Task<RestGuildUser?> InferUser(string who, string nick, string id) {
             RestGuildUser? user;
             try {
                 string searchNick = nick.ToLowerInvariant();
@@ -226,16 +227,49 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             }
             return user;
         }
-        private async Task<Quote> ImportInferManual(Quote quote, string id) {
+        private async Task<ulong> InferUserId(string who, string text, string id) {
+            ulong user = 0;
+            try {
+                if (text.StartsWith("<@", StringComparison.Ordinal) && text.EndsWith('>') &&
+                    ulong.TryParse(text[2..^1], out ulong userId))
+                    user = userId;
+                if (user == 0) {
+                    Log.Warning("[quote-import] Could not get {Who} {Text} for quote {Id}: user is 0", who, text, id);
+                    await FollowupAsync($"⚠️ Could not get {who} {text} for quote {id}! (user is 0)");
+                }
+                else {
+                    Log.Information("[quote-import] Quote {Id} {Who} inferred as {User}", id, who, user);
+                    await FollowupAsync($"🗒️ Quote {id} {who} inferred as <@{user}>",
+                        allowedMentions: AllowedMentions.None);
+                }
+            }
+            catch (Exception ex) {
+                Log.Warning(ex, "[quote-import] Could not get {Who} {Text} for quote {Id}", who, text, id);
+                await FollowupAsync($"⚠️ Could not get {who} {text} for quote {id}!");
+            }
+            return user;
+        }
+        private async Task<Quote> InferManual(Quote quote, string id, string nick) {
             Match quoteMatch = QuoteAddRegex().Match(quote.content);
             if (!quoteMatch.Success)
                 return quote;
-            RestGuildUser? user = await ImportInferUser("author", quoteMatch.Groups[1].Value, id);
+            ulong userId = await InferUserId("author", nick, id);
+            if (userId == 0)
+                userId = await InferUserId("author", quoteMatch.Groups[2].Value, id);
+            if (userId == 0)
+                userId = (await InferUser("author", quoteMatch.Groups[2].Value, id))?.Id ?? 0;
             quote = quote with {
-                content = quoteMatch.Groups[0].Value,
-                authorId = user?.Id ?? 0
+                content = quoteMatch.Groups[1].Value,
+                authorId = userId
             };
             return quote;
+        }
+
+        private async Task AddQuote(Quote quote) {
+            // override existing quote
+            if (await db.quotes.FirstOrDefaultAsync(q => q.name == quote.name) is { } oldQuote)
+                db.Remove(oldQuote);
+            db.Add(quote);
         }
     }
 }
