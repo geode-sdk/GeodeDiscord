@@ -8,42 +8,32 @@ using Serilog;
 
 namespace GeodeDiscord;
 
-public class InteractionHandler {
-    private readonly DiscordSocketClient _client;
-    private readonly InteractionService _handler;
-    private readonly IServiceProvider _services;
-
-    public InteractionHandler(DiscordSocketClient client, InteractionService handler, IServiceProvider services) {
-        _client = client;
-        _handler = handler;
-        _services = services;
-    }
-
+public class InteractionHandler(DiscordSocketClient client, InteractionService handler, IServiceProvider services) {
     public async Task InitializeAsync() {
-        _client.Ready += ReadyAsync;
-        _client.InteractionCreated += HandleInteraction;
+        client.Ready += ReadyAsync;
+        client.InteractionCreated += HandleInteraction;
 
-        _handler.Log += log => {
+        handler.Log += log => {
             Log.Write(Util.DiscordToSerilogLevel(log.Severity), log.Exception, "[{Source}] {Message}", log.Source,
                 log.Message);
             return Task.CompletedTask;
         };
 
-        await _handler.AddModulesAsync(Assembly.GetEntryAssembly(), _services);
+        await handler.AddModulesAsync(Assembly.GetEntryAssembly(), services);
     }
 
     private async Task ReadyAsync() {
         if (Environment.GetEnvironmentVariable("DISCORD_TEST_GUILD") is null)
-            await _handler.RegisterCommandsGloballyAsync();
+            await handler.RegisterCommandsGloballyAsync();
         else
-            await _handler.RegisterCommandsToGuildAsync(
+            await handler.RegisterCommandsToGuildAsync(
                 ulong.Parse(Environment.GetEnvironmentVariable("DISCORD_TEST_GUILD") ?? "0"));
     }
 
     private async Task HandleInteraction(SocketInteraction interaction) {
         try {
-            SocketInteractionContext context = new(_client, interaction);
-            IResult? result = await _handler.ExecuteCommandAsync(context, _services);
+            SocketInteractionContext context = new(client, interaction);
+            IResult? result = await handler.ExecuteCommandAsync(context, services);
             if (result.IsSuccess)
                 return;
             Log.Error("Error handling interaction: {Error}. {Reason}", result.Error, result.ErrorReason);

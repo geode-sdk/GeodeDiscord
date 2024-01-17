@@ -17,22 +17,18 @@ using Serilog;
 namespace GeodeDiscord.Modules;
 
 [Group("quote-import", "Import quotes."), DefaultMemberPermissions(GuildPermission.Administrator)]
-public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext> {
-    private readonly ApplicationDbContext _db;
-
-    public QuoteImportModule(ApplicationDbContext db) => _db = db;
-
+public class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
     [SlashCommand("manual-quoter", "Sets the quoter of a quote."), EnabledInDm(false),
      UsedImplicitly]
     public async Task ManualQuoter([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] string name,
         IUser newQuoter) {
-        Quote? quote = await _db.quotes.FirstOrDefaultAsync(q => q.name == name);
+        Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.name == name);
         if (quote is null) {
             await RespondAsync("❌ Quote not found!", ephemeral: true);
             return;
         }
-        _db.Remove(quote);
-        _db.Add(new Quote {
+        db.Remove(quote);
+        db.Add(new Quote {
             name = quote.name,
             messageId = quote.messageId,
             channelId = quote.channelId,
@@ -46,7 +42,7 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
             extraAttachments = quote.extraAttachments,
             content = quote.content
         });
-        try { await _db.SaveChangesAsync(); }
+        try { await db.SaveChangesAsync(); }
         catch (Exception ex) {
             Log.Error(ex, "Failed to change quote");
             await RespondAsync("❌ Failed to change quote!", ephemeral: true);
@@ -59,10 +55,7 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
         (string id, string nick, string channel, string messageId, string text, long time);
 
     [Group("uber-bot", "UB3R-B0T")]
-    public class UberBotModule : InteractionModuleBase<SocketInteractionContext> {
-        private readonly ApplicationDbContext _db;
-        public UberBotModule(ApplicationDbContext db) => _db = db;
-
+    public class UberBotModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
         [SlashCommand("import", "Imports quotes from UB3R-B0T's API response."), EnabledInDm(false),
          UsedImplicitly]
         public async Task Import(Attachment attachment) {
@@ -100,7 +93,7 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
                     importedQuotes++;
             }
 
-            try { await _db.SaveChangesAsync(); }
+            try { await db.SaveChangesAsync(); }
             catch (Exception ex) {
                 Log.Error(ex, "Failed to import quotes");
                 await FollowupAsync("❌ Failed to import quotes! (error when writing to the database)");
@@ -163,7 +156,7 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
                     await FollowupAsync($"⚠️ Failed to find quoter of quote {id}!");
                 }
 
-                _db.Add(await Util.MessageToQuote(quoter?.Id ?? 0, id, message, timestamp));
+                db.Add(await Util.MessageToQuote(quoter?.Id ?? 0, id, message, timestamp));
                 return true;
             }
             catch (Exception ex) {
@@ -179,7 +172,7 @@ public class QuoteImportModule : InteractionModuleBase<SocketInteractionContext>
             Log.Warning("[quote-import] Quote {Id} imported with potentially missing data", id);
             await FollowupAsync($"⚠️ Quote {id} imported with potentially missing data!");
 
-            _db.Add(new Quote {
+            db.Add(new Quote {
                 name = id,
                 messageId = messageId,
                 channelId = 0,

@@ -14,10 +14,7 @@ using Serilog;
 namespace GeodeDiscord.Modules;
 
 [Group("quote", "Quote other people's messages."), UsedImplicitly]
-public partial class QuoteModule : InteractionModuleBase<SocketInteractionContext> {
-    private readonly ApplicationDbContext _db;
-    public QuoteModule(ApplicationDbContext db) => _db = db;
-
+public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
     private static event Action<Quote, bool>? onUpdate;
 
     [MessageCommand("Add quote"), EnabledInDm(false), UsedImplicitly]
@@ -29,19 +26,19 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
                 message = realMessage;
         }
 
-        if (_db.quotes.Any(q => q.messageId == message.Id)) {
+        if (db.quotes.Any(q => q.messageId == message.Id)) {
             await RespondAsync("❌ This message is already quoted!", ephemeral: true);
             return;
         }
 
-        int max = !await _db.quotes.AnyAsync() ? 0 : await _db.Database
+        int max = !await db.quotes.AnyAsync() ? 0 : await db.Database
             .SqlQueryRaw<int>("SELECT max(CAST(name AS INTEGER)) as Value FROM quotes")
             .SingleAsync();
 
         Quote quote = await Util.MessageToQuote(Context.User.Id, (max + 1).ToString(), message);
-        _db.Add(quote);
+        db.Add(quote);
 
-        try { await _db.SaveChangesAsync(); }
+        try { await db.SaveChangesAsync(); }
         catch (Exception ex) {
             Log.Error(ex, "Failed to save quote");
             await RespondAsync("❌ Failed to save quote!", ephemeral: true);
@@ -73,7 +70,7 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
             await ModifyOriginalResponseAsync(msg => msg.Components = new ComponentBuilder().Build());
             return;
         }
-        if (await _db.quotes.FindAsync(quoteMessage) is not { } currentQuote)
+        if (await db.quotes.FindAsync(quoteMessage) is not { } currentQuote)
             return;
         await UpdateAddMessage(currentQuote, true, true);
         await ContinueAddQuote(quoteMessage);
@@ -112,17 +109,17 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
 
     [SlashCommand("count", "Gets the total amount of quotes."), EnabledInDm(false), UsedImplicitly]
     public async Task GetCount() {
-        int count = await _db.quotes.CountAsync();
+        int count = await db.quotes.CountAsync();
         await RespondAsync($"There are **{count}** total quotes.");
     }
 
     [SlashCommand("random", "Gets a random quote."), EnabledInDm(false), UsedImplicitly]
     public async Task GetRandom(IUser? user = null) {
-        if (user is null ? !_db.quotes.Any() : !_db.quotes.Any(q => q.authorId == user.Id)) {
+        if (user is null ? !db.quotes.Any() : !db.quotes.Any(q => q.authorId == user.Id)) {
             await RespondAsync("❌ There are no quotes of this user yet!", ephemeral: true);
             return;
         }
-        Quote quote = await (user is null ? _db.quotes : _db.quotes.Where(q => q.authorId == user.Id))
+        Quote quote = await (user is null ? db.quotes : db.quotes.Where(q => q.authorId == user.Id))
             .OrderBy(_ => EF.Functions.Random())
             .FirstAsync();
         await RespondAsync(
@@ -133,7 +130,7 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
 
     [SlashCommand("get", "Gets a quote with the specified name."), EnabledInDm(false), UsedImplicitly]
     public async Task Get([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
-        Quote? quote = await _db.quotes.FirstOrDefaultAsync(q => q.name == name);
+        Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.name == name);
         if (quote is null) {
             await RespondAsync("❌ Quote not found!", ephemeral: true);
             return;
@@ -144,15 +141,12 @@ public partial class QuoteModule : InteractionModuleBase<SocketInteractionContex
         );
     }
 
-    public class QuoteAutocompleteHandler : AutocompleteHandler {
-        private readonly ApplicationDbContext _db;
-        public QuoteAutocompleteHandler(ApplicationDbContext db) => _db = db;
-
+    public class QuoteAutocompleteHandler(ApplicationDbContext db) : AutocompleteHandler {
         public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
             IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider services) {
             string value = autocompleteInteraction.Data.Current.Value as string ?? string.Empty;
             try {
-                return Task.FromResult(AutocompletionResult.FromSuccess(_db.quotes
+                return Task.FromResult(AutocompletionResult.FromSuccess(db.quotes
                     .Where(q =>
                         q.messageId.ToString() == value ||
                         q.authorId.ToString() == value ||
