@@ -37,6 +37,25 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
         }
         await RespondAsync($"Quote **{quote.name}** quoter changed to `{newQuoter.Id}`!");
     }
+    [SlashCommand("manual-author", "Sets the author of a quote."), EnabledInDm(false),
+     UsedImplicitly]
+    public async Task ManualAuthor([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] string name,
+        IUser newAuthor) {
+        Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.name == name);
+        if (quote is null) {
+            await RespondAsync("❌ Quote not found!", ephemeral: true);
+            return;
+        }
+        db.Remove(quote);
+        db.Add(quote with { authorId = newAuthor.Id });
+        try { await db.SaveChangesAsync(); }
+        catch (Exception ex) {
+            Log.Error(ex, "Failed to change quote");
+            await RespondAsync("❌ Failed to change quote!", ephemeral: true);
+            return;
+        }
+        await RespondAsync($"Quote **{quote.name}** author changed to `{newAuthor.Id}`!");
+    }
 
     private readonly record struct UberBotQuote
         (string id, string nick, string channel, string messageId, string text, long time);
