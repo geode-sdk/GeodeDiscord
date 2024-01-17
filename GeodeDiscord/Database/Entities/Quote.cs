@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace GeodeDiscord.Database.Entities;
 
 [Index(nameof(name), IsUnique = true), Index(nameof(authorId))]
-public class Quote {
+public record Quote {
     // basic
     [Key, DatabaseGenerated(DatabaseGeneratedOption.None)]
     public required ulong messageId { get; init; }

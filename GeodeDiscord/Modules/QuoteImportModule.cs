@@ -28,20 +28,7 @@ public class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<
             return;
         }
         db.Remove(quote);
-        db.Add(new Quote {
-            name = quote.name,
-            messageId = quote.messageId,
-            channelId = quote.channelId,
-            createdAt = quote.createdAt,
-            lastEditedAt = quote.lastEditedAt,
-            quoterId = newQuoter.Id,
-            authorId = quote.authorId,
-            replyAuthorId = quote.replyAuthorId,
-            jumpUrl = quote.jumpUrl,
-            images = quote.images,
-            extraAttachments = quote.extraAttachments,
-            content = quote.content
-        });
+        db.Add(quote with { quoterId = newQuoter.Id });
         try { await db.SaveChangesAsync(); }
         catch (Exception ex) {
             Log.Error(ex, "Failed to change quote");
