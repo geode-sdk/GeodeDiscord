@@ -17,7 +17,7 @@ using Serilog;
 namespace GeodeDiscord.Modules;
 
 [Group("quote-import", "Import quotes."), DefaultMemberPermissions(GuildPermission.Administrator)]
-public class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
+public partial class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
     [SlashCommand("manual-quoter", "Sets the quoter of a quote."), EnabledInDm(false),
      UsedImplicitly]
     public async Task ManualQuoter([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] string name,
@@ -42,7 +42,11 @@ public class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<
         (string id, string nick, string channel, string messageId, string text, long time);
 
     [Group("uber-bot", "UB3R-B0T")]
-    public class UberBotModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
+    public partial class UberBotModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
+        [GeneratedRegex("\\.quote add \"(.*)\" - (.*)",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant | RegexOptions.Compiled)]
+        private static partial Regex QuoteAddRegex();
+
         [SlashCommand("import", "Imports quotes from UB3R-B0T's API response."), EnabledInDm(false),
          UsedImplicitly]
         public async Task Import(Attachment attachment) {
@@ -143,7 +147,7 @@ public class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<
                     await FollowupAsync($"⚠️ Failed to find quoter of quote {id}!");
                 }
 
-                db.Add(await Util.MessageToQuote(quoter?.Id ?? 0, id, message, timestamp));
+                db.Add(await ImportInferManual(await Util.MessageToQuote(quoter?.Id ?? 0, id, message, timestamp), id));
                 return true;
             }
             catch (Exception ex) {
@@ -202,6 +206,17 @@ public class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<
                 user = null;
             }
             return user;
+        }
+        private async Task<Quote> ImportInferManual(Quote quote, string id) {
+            Match quoteMatch = QuoteAddRegex().Match(quote.content);
+            if (!quoteMatch.Success)
+                return quote;
+            RestGuildUser? user = await ImportInferUser("author", quoteMatch.Groups[1].Value, id);
+            quote = quote with {
+                content = quoteMatch.Groups[0].Value,
+                authorId = user?.Id ?? 0
+            };
+            return quote;
         }
     }
 }
