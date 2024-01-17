@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 using Discord;
@@ -66,6 +67,10 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             RegexOptions.Singleline | RegexOptions.CultureInvariant | RegexOptions.Compiled)]
         private static partial Regex QuoteAddRegex();
 
+        [JsonSourceGenerationOptions]
+        [JsonSerializable(typeof(UberBotQuote[]))]
+        private partial class QuoteJsonSourceGen : JsonSerializerContext;
+
         [SlashCommand("import", "Imports quotes from UB3R-B0T's API response."), EnabledInDm(false),
          UsedImplicitly]
         public async Task Import(Attachment attachment) {
@@ -80,7 +85,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             try {
                 await ModifyOriginalResponseAsync(prop =>
                     prop.Content = $"Importing quotes from {attachment.Filename}: deserializing JSON");
-                toImport = JsonSerializer.Deserialize<UberBotQuote[]>(data);
+                toImport = JsonSerializer.Deserialize(data, QuoteJsonSourceGen.Default.UberBotQuoteArray);
             }
             catch (JsonException ex) {
                 Log.Error(ex, "Failed to import quotes");
