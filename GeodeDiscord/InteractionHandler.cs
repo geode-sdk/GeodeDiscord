@@ -23,13 +23,12 @@ public class InteractionHandler(DiscordSocketClient client, InteractionService h
     }
 
     private async Task ReadyAsync() {
-        if (Environment.GetEnvironmentVariable("DISCORD_TEST_GUILD") is null)
-            await handler.RegisterCommandsGloballyAsync();
-        else
-            await handler.RegisterCommandsToGuildAsync(
-                ulong.Parse(Environment.GetEnvironmentVariable("DISCORD_TEST_GUILD") ?? "0"));
 #if DEBUG
+        await handler.RegisterCommandsToGuildAsync(
+            ulong.Parse(Environment.GetEnvironmentVariable("DISCORD_TEST_GUILD") ?? "0"));
         await client.SetActivityAsync(new CustomStatusGame("being debugged rn yay"));
+#else
+        await handler.RegisterCommandsGloballyAsync();
 #endif
     }
 
