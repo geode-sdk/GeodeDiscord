@@ -66,6 +66,7 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
                 _ => false
             });
         onUpdate -= OnUpdate;
+        // if timed out, remove the buttons
         if (interaction is null) {
             await ModifyOriginalResponseAsync(msg => msg.Components = new ComponentBuilder().Build());
             return;
@@ -77,6 +78,10 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         return;
 
         async void OnUpdate(Quote quote, bool exists) {
+            // OnUpdate can be called from outside here even when multiple interaction is current,
+            // causing all interactions to get updated with the same message
+            if (quote.messageId != quoteMessage)
+                return;
             await UpdateAddMessage(quote, exists, false);
         }
         async Task UpdateAddMessage(Quote quote, bool exists, bool setShow) {
