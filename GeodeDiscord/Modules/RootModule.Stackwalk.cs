@@ -65,7 +65,7 @@ public partial class RootModule {
 
             using FileAttachment attachment = new(logPath);
             await ModifyOriginalResponseAsync(x => {
-                x.Content = "✅ Done!";
+                x.Content = "✅ Done! :3";
                 x.Attachments = new[] { attachment };
             });
         }
