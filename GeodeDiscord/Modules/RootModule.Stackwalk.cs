@@ -16,7 +16,7 @@ public partial class RootModule {
             message.Attachments.FirstOrDefault(x => x?.Filename.EndsWith(".dmp", StringComparison.Ordinal) ?? false,
                 null);
         if (dump is null) {
-            await RespondAsync("❌ No dump attached to this message", ephemeral: false);
+            await RespondAsync("❌ No dump attached to this message", ephemeral: true);
             return;
         }
         await Stackwalk(dump);
