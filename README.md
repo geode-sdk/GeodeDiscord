@@ -3,11 +3,13 @@ A bot for the Geode SDK Discord Server
 
 # Prerequisites
 - DotNET SDK (8.0)
+- Rust (For minidump-stackwalk)
 - Discord Bot
 - Discord Server
 
 # Setup
 ```
+cargo install minidump-stackwalk
 git clone https://github.com/geode-sdk/GeodeDiscord
 dotnet build -c Release
 dotnet run --project GeodeDiscord/GeodeDiscord.csproj
