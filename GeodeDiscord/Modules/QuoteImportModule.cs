@@ -17,7 +17,7 @@ using Serilog;
 
 namespace GeodeDiscord.Modules;
 
-[Group("quote-import", "Import quotes."), DefaultMemberPermissions(GuildPermission.Administrator)]
+[Group("quote-import", "Import quotes."), DefaultMemberPermissions(GuildPermission.Administrator), EnabledInDm(false)]
 public partial class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
     [SlashCommand("manual-quoter", "Sets the quoter of a quote."), EnabledInDm(false),
      UsedImplicitly]
