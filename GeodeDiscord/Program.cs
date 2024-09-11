@@ -5,6 +5,7 @@ using Discord.Interactions;
 using Discord.WebSocket;
 
 using GeodeDiscord.Database;
+using GeodeDiscord.Modules;
 
 using Microsoft.EntityFrameworkCore.Sqlite.Query.Internal;
 using Microsoft.Extensions.DependencyInjection;
@@ -25,6 +26,7 @@ public static class Program {
             GatewayIntents =
                 GatewayIntents.GuildIntegrations |
                 GatewayIntents.GuildMessages |
+                GatewayIntents.GuildMembers |
                 GatewayIntents.Guilds |
                 GatewayIntents.MessageContent
         })
@@ -60,6 +62,10 @@ public static class Program {
             Log.Write(Util.DiscordToSerilogLevel(log.Severity), log.Exception, "[{Source}] {Message}", log.Source,
                 log.Message);
             return Task.CompletedTask;
+        };
+
+        client.UserJoined += async user => {
+            await StickyModule.OnUserJoined(user, services.GetRequiredService<ApplicationDbContext>());
         };
 
         await services.GetRequiredService<InteractionHandler>().InitializeAsync();
