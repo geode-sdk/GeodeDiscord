@@ -18,7 +18,8 @@ RUN dotnet publish "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/publish
 FROM build AS migrations
 ARG BUILD_CONFIGURATION=Release
 RUN dotnet tool install --global dotnet-ef
-ENTRYPOINT dotnet ef database update --project "GeodeDiscord.csproj" --configuration $BUILD_CONFIGURATION
+ENV PATH="$PATH:/root/.dotnet/tools"
+ENTRYPOINT dotnet-ef database update --project "GeodeDiscord.csproj" --configuration $BUILD_CONFIGURATION
 
 FROM base AS final
 WORKDIR /app
