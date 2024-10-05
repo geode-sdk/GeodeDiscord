@@ -15,7 +15,7 @@ FROM build AS migrations
 ARG BUILD_CONFIGURATION=Release
 RUN dotnet tool install --global dotnet-ef
 ENV PATH="$PATH:/root/.dotnet/tools"
-ENTRYPOINT ["dotnet", "ef", "database", "update", "--project", "GeodeDiscord.csproj", "--startup-project", "GeodeDiscord.csproj", "--configuration", "$BUILD_CONFIGURATION"]
+ENTRYPOINT ["dotnet", "ef", "database", "update", "--project", "GeodeDiscord.csproj", "--startup-project", "GeodeDiscord.csproj", "--configuration", "$BUILD_CONFIGURATION", "--no-build"]
 
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
