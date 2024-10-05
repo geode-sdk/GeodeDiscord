@@ -19,3 +19,6 @@ FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "GeodeDiscord.dll"]
+
+FROM rust:1.67 AS stackwalk
+RUN cargo install minidump-stackwalk
