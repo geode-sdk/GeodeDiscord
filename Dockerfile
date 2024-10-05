@@ -13,8 +13,10 @@ RUN dotnet build "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS migrations
 ARG BUILD_CONFIGURATION=Release
+ARG GEODE_BOT_DB_PATH
 RUN dotnet tool install --global dotnet-ef
 ENV PATH="$PATH:/root/.dotnet/tools"
+ENV GEODE_BOT_DB_PATH=${GEODE_BOT_DB_PATH}
 RUN dotnet ef database update --project "GeodeDiscord.csproj" --startup-project "GeodeDiscord.csproj" --configuration $BUILD_CONFIGURATION
 
 FROM migrations AS publish
