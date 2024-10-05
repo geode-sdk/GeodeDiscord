@@ -57,7 +57,7 @@ public partial class RootModule {
             Process process = new();
             process.StartInfo.CreateNoWindow = true;
             process.StartInfo.UseShellExecute = false;
-            process.StartInfo.FileName = "./minidump-stackwalk";
+            process.StartInfo.FileName = "minidump-stackwalk";
             process.StartInfo.Arguments =
                 $"--output-file {logPath} --symbols-url https://symbols.xyze.dev/ {dumpPath} {sym1Path} {sym2Path}";
             process.Start();
