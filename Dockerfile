@@ -15,10 +15,10 @@ FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
 RUN dotnet publish "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
+FROM rust:1.81 AS stackwalk
+RUN cargo install minidump-stackwalk
+
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "GeodeDiscord.dll"]
-
-FROM rust:1.81 AS stackwalk
-RUN cargo install minidump-stackwalk
