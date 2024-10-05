@@ -15,7 +15,7 @@ FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
 RUN dotnet publish "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
-FROM build AS migrations
+FROM publish AS migrations
 ARG BUILD_CONFIGURATION=Release
 RUN dotnet tool install --global dotnet-ef
 RUN dotnet ef database update --project "GeodeDiscord.csproj" --configuration $BUILD_CONFIGURATION
