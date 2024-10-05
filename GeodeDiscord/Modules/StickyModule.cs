@@ -146,7 +146,7 @@ public class StickyModule(ApplicationDbContext db) : InteractionModuleBase<Socke
             try {
                 return Task.FromResult(AutocompletionResult.FromSuccess(context.Guild.Roles
                     .Where(r => r.Id != everyoneRoleId)
-                    .Where(r => EF.Functions.Like(r.Name, $"%{value}%"))
+                    .Where(r => r.Name.Contains(value, StringComparison.InvariantCultureIgnoreCase))
                     .Take(25)
                     .Select(r => new AutocompleteResult(r.Name, r.Id.ToString()))));
             }
