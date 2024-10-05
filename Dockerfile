@@ -21,4 +21,5 @@ RUN cargo install minidump-stackwalk
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+COPY --from=stackwalk ~/.cargo/bin/minidump-stackwalk .
 ENTRYPOINT ["dotnet", "GeodeDiscord.dll"]
