@@ -2,6 +2,7 @@
 
 using Discord;
 using Discord.Interactions;
+using Discord.Rest;
 using Discord.WebSocket;
 
 using GeodeDiscord.Database;
@@ -29,6 +30,7 @@ public static class Program {
                 GatewayIntents.MessageContent
         })
         .AddSingleton<DiscordSocketClient>()
+        .AddSingleton<IRestClientProvider>(x => x.GetRequiredService<DiscordSocketClient>())
         .AddSingleton(new InteractionServiceConfig {
             InteractionCustomIdDelimiters = new[] { '/' }
         })
