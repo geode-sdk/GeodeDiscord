@@ -18,7 +18,7 @@ namespace GeodeDiscord;
 
 public static class Program {
     public static IReadOnlyList<LogEvent> log => logs;
-    private static readonly List<LogEvent> logs = new();
+    private static readonly List<LogEvent> logs = [];
 
     private static readonly IServiceProvider services = new ServiceCollection()
         .AddDbContext<ApplicationDbContext>()
@@ -32,7 +32,7 @@ public static class Program {
         .AddSingleton<DiscordSocketClient>()
         .AddSingleton<IRestClientProvider>(x => x.GetRequiredService<DiscordSocketClient>())
         .AddSingleton(new InteractionServiceConfig {
-            InteractionCustomIdDelimiters = new[] { '/' }
+            InteractionCustomIdDelimiters = ['/']
         })
         .AddSingleton<InteractionService>()
         .AddSingleton<InteractionHandler>()

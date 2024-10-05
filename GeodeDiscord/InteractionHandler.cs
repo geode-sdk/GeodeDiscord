@@ -30,7 +30,7 @@ public class InteractionHandler(DiscordSocketClient client, InteractionService h
         await client.SetActivityAsync(new CustomStatusGame("being debugged rn yay"));
 #else
         if (testGuild != 0)
-            await handler.RestClient.BulkOverwriteGuildCommands(Array.Empty<ApplicationCommandProperties>(), testGuild);
+            await handler.RestClient.BulkOverwriteGuildCommands([], testGuild);
         await handler.RegisterCommandsGloballyAsync();
 #endif
     }

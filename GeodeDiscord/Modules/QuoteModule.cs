@@ -98,7 +98,7 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         exists ? show ? "Quote saved!" : $"Quote {quote.jumpUrl} saved as **{quote.name}**!" :
             $"~~Quote {quote.jumpUrl} saved as *{quote.name}*!~~";
     private static Embed[] GetAddMessageEmbeds(Quote quote, bool exists, bool show) =>
-        show && exists ? Util.QuoteToEmbeds(quote).ToArray() : Array.Empty<Embed>();
+        show && exists ? Util.QuoteToEmbeds(quote).ToArray() : [];
     private static MessageComponent GetAddMessageComponents(Quote quote, bool exists, bool show) =>
         !exists ? new ComponentBuilder().Build() :
             new ComponentBuilder()
