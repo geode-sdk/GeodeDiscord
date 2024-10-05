@@ -11,14 +11,14 @@ COPY GeodeDiscord/. ./GeodeDiscord
 WORKDIR "/src/GeodeDiscord"
 RUN dotnet build "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
+FROM build AS publish
+ARG BUILD_CONFIGURATION=Release
+RUN dotnet publish "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+
 FROM build AS migrations
 ARG BUILD_CONFIGURATION=Release
 RUN dotnet tool install --global dotnet-ef
-RUN dotnet ef database update --project "GeodeDiscord.csproj" --configuration $BUILD_CONFIGURATION
-
-FROM migrations AS publish
-ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+ENTRYPOINT dotnet ef database update --project "GeodeDiscord.csproj" --configuration $BUILD_CONFIGURATION
 
 FROM base AS final
 WORKDIR /app
