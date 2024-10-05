@@ -58,9 +58,9 @@ public static class Program {
 
         DiscordSocketClient client = services.GetRequiredService<DiscordSocketClient>();
 
-        client.Log += log => {
-            Log.Write(Util.DiscordToSerilogLevel(log.Severity), log.Exception, "[{Source}] {Message}", log.Source,
-                log.Message);
+        client.Log += message => {
+            Log.Write(Util.DiscordToSerilogLevel(message.Severity), message.Exception, "[{Source}] {Message}",
+                message.Source, message.Message);
             return Task.CompletedTask;
         };
 
