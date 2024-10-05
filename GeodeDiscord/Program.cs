@@ -67,6 +67,8 @@ public static class Program {
         };
 
         client.UserJoined += async user => {
+            if (user.Guild.Id != 911701438269386882)
+                return;
             await StickyModule.OnUserJoined(user, services.GetRequiredService<ApplicationDbContext>());
         };
 
