@@ -11,7 +11,7 @@ using Serilog.Events;
 
 namespace GeodeDiscord.Modules;
 
-[Group("debug", "Debug."), DefaultMemberPermissions(GuildPermission.Administrator), EnabledInDm(false)]
+[Group("debug", "Debug."), DefaultMemberPermissions(GuildPermission.Administrator), CommandContextType(InteractionContextType.Guild)]
 public class DebugModule : InteractionModuleBase<SocketInteractionContext> {
 #pragma warning disable CA1822
     [SlashCommand("uncaught-exception", "Throws an exception and doesn't catch it."),

@@ -17,7 +17,7 @@ namespace GeodeDiscord.Modules;
 public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
     private static event Action<Quote, bool>? onUpdate;
 
-    [MessageCommand("Add quote"), EnabledInDm(false), UsedImplicitly]
+    [MessageCommand("Add quote"), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task Add(IMessage message) {
         IMessageChannel? channel = await Context.Interaction.GetChannelAsync();
         if (channel is not null) {
@@ -112,13 +112,13 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
     [ComponentInteraction("get-button:*"), UsedImplicitly]
     private async Task GetButton(string messageId) => await DeferAsync();
 
-    [SlashCommand("count", "Gets the total amount of quotes."), EnabledInDm(false), UsedImplicitly]
+    [SlashCommand("count", "Gets the total amount of quotes."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task GetCount() {
         int count = await db.quotes.CountAsync();
         await RespondAsync($"There are **{count}** total quotes.");
     }
 
-    [SlashCommand("random", "Gets a random quote."), EnabledInDm(false), UsedImplicitly]
+    [SlashCommand("random", "Gets a random quote."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task GetRandom(IUser? user = null) {
         if (user is null ? !db.quotes.Any() : !db.quotes.Any(q => q.authorId == user.Id)) {
             await RespondAsync("❌ There are no quotes of this user yet!", ephemeral: true);
@@ -133,7 +133,7 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         );
     }
 
-    [SlashCommand("get", "Gets a quote with the specified name."), EnabledInDm(false), UsedImplicitly]
+    [SlashCommand("get", "Gets a quote with the specified name."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task Get([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
         Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.name == name);
         if (quote is null) {

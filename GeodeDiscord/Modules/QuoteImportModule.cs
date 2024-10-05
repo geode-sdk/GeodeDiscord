@@ -17,9 +17,9 @@ using Serilog;
 
 namespace GeodeDiscord.Modules;
 
-[Group("quote-import", "Import quotes."), DefaultMemberPermissions(GuildPermission.Administrator), EnabledInDm(false)]
+[Group("quote-import", "Import quotes."), DefaultMemberPermissions(GuildPermission.Administrator), CommandContextType(InteractionContextType.Guild)]
 public partial class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
-    [SlashCommand("manual-quoter", "Sets the quoter of a quote."), EnabledInDm(false),
+    [SlashCommand("manual-quoter", "Sets the quoter of a quote."), CommandContextType(InteractionContextType.Guild),
      UsedImplicitly]
     public async Task ManualQuoter([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] string name,
         IUser newQuoter) {
@@ -38,7 +38,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
         }
         await RespondAsync($"Quote **{quote.name}** quoter changed to `{newQuoter.Id}`!");
     }
-    [SlashCommand("manual-author", "Sets the author of a quote."), EnabledInDm(false),
+    [SlashCommand("manual-author", "Sets the author of a quote."), CommandContextType(InteractionContextType.Guild),
      UsedImplicitly]
     public async Task ManualAuthor([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] string name,
         IUser newAuthor) {
@@ -71,7 +71,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
         [JsonSerializable(typeof(UberBotQuote[]))]
         private partial class QuoteJsonSourceGen : JsonSerializerContext;
 
-        [SlashCommand("import", "Imports quotes from UB3R-B0T's API response."), EnabledInDm(false),
+        [SlashCommand("import", "Imports quotes from UB3R-B0T's API response."), CommandContextType(InteractionContextType.Guild),
          UsedImplicitly]
         public async Task Import(Attachment attachment) {
             await DeferAsync();

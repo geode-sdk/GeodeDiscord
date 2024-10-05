@@ -13,7 +13,7 @@ using Serilog;
 namespace GeodeDiscord.Modules;
 
 public partial class QuoteModule {
-    [Group("sensitive", "Sensitive quote commands."), EnabledInDm(false)]
+    [Group("sensitive", "Sensitive quote commands."), CommandContextType(InteractionContextType.Guild)]
     public class SensitiveModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
         private async Task<bool> CheckSensitive(Quote quote) {
             if (Context.User is IGuildUser guildUser &&

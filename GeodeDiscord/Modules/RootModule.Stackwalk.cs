@@ -10,7 +10,7 @@ using Serilog;
 namespace GeodeDiscord.Modules;
 
 public partial class RootModule {
-    [MessageCommand("Stackwalk"), EnabledInDm(false), UsedImplicitly]
+    [MessageCommand("Stackwalk"), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task StackwalkMessage(IMessage message) {
         IAttachment? dump =
             message.Attachments.FirstOrDefault(x => x?.Filename.EndsWith(".dmp", StringComparison.Ordinal) ?? false,
@@ -22,7 +22,7 @@ public partial class RootModule {
         await Stackwalk(dump);
     }
 
-    [SlashCommand("stackwalk", "Run minidump-stackwalk with the attached files"), EnabledInDm(false),
+    [SlashCommand("stackwalk", "Run minidump-stackwalk with the attached files"), CommandContextType(InteractionContextType.Guild),
      UsedImplicitly]
     public Task StackwalkCommand(Attachment dump, Attachment? sym1 = null, Attachment? sym2 = null) =>
         Stackwalk(dump, sym1, sym2);

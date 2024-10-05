@@ -54,13 +54,13 @@ public partial class RootModule {
         }
     }
 
-    [SlashCommand("docs", "Quickly get a docs page with auto-complete."), EnabledInDm(false), UsedImplicitly]
+    [SlashCommand("docs", "Quickly get a docs page with auto-complete."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task Docs([Autocomplete(typeof(DocsAutocompleteHandler))] string page) {
         await RespondAsync($"{DocsBaseUrl}/{page}");
     }
 
     [SlashCommand("docs-invalidate-cache", "Forcefully invalidates docs cache. (normally expires daily)"),
-     EnabledInDm(false), UsedImplicitly]
+     CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task DocsClearCache() {
         _lastResponsesUpdate = DateTime.MinValue;
         await RespondAsync("Successfully invalidated docs cache.", ephemeral: true);
