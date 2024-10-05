@@ -142,9 +142,10 @@ public class StickyModule(ApplicationDbContext db) : InteractionModuleBase<Socke
         public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
             IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider services) {
             string value = autocompleteInteraction.Data.Current.Value as string ?? string.Empty;
+            ulong everyoneRoleId = context.Guild.EveryoneRole.Id;
             try {
                 return Task.FromResult(AutocompletionResult.FromSuccess(context.Guild.Roles
-                    .Where(r => r != context.Guild.EveryoneRole)
+                    .Where(r => r.Id != everyoneRoleId)
                     .Where(r => EF.Functions.Like(r.Name, $"%{value}%"))
                     .Take(25)
                     .Select(r => new AutocompleteResult(r.Name, r.Id.ToString()))));
