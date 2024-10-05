@@ -72,7 +72,10 @@ public class StickyModule(ApplicationDbContext db) : InteractionModuleBase<Socke
             return;
         }
 
-        await RespondAsync($"✅ Successfully added sticky role **{r.Name}** to {user.Mention}!");
+        await RespondAsync(
+            $"✅ Successfully added sticky role **{r.Name}** to {user.Mention}!",
+            allowedMentions: AllowedMentions.None
+        );
     }
 
     [SlashCommand("list", "List all sticky roles for user."), UsedImplicitly]
@@ -135,7 +138,10 @@ public class StickyModule(ApplicationDbContext db) : InteractionModuleBase<Socke
             return;
         }
 
-        await RespondAsync($"✅ Successfully removed sticky role *{r.Name}* from {user.Mention}!");
+        await RespondAsync(
+            $"✅ Successfully removed sticky role *{r.Name}* from {user.Mention}!",
+            allowedMentions: AllowedMentions.None
+        );
     }
 
     private class RoleAutocompleteHandler : AutocompleteHandler {
