@@ -25,29 +25,48 @@ public static class Util {
         return refMessage ?? null;
     }
 
+    private static async Task<IMessage?> GetForwardedAsync(IMessage message) {
+        if (message.Channel is null || message.Reference is null ||
+            message.Reference.ChannelId != message.Channel.Id ||
+            !message.Reference.MessageId.IsSpecified ||
+            message.Reference.ReferenceType.GetValueOrDefault() != MessageReferenceType.Forward)
+            return null;
+        ulong refMessageId = message.Reference.MessageId.Value;
+        IMessage? refMessage = await message.Channel.GetMessageAsync(refMessageId);
+        return refMessage ?? null;
+    }
+
     public static Task<Quote> MessageToQuote(ulong quoterId, string name, IMessage message, Quote? original = null) =>
         MessageToQuote(quoterId, name, message, DateTimeOffset.Now, original);
+
     public static async Task<Quote> MessageToQuote(ulong quoterId, string name, IMessage message,
         DateTimeOffset timestamp, Quote? original = null) {
-        List<string> images = GetMessageImages(message);
-        int extraAttachments = message.Attachments.Count - images.Count;
-        ulong replyAuthorId = (await GetReplyAsync(message))?.Author.Id ?? 0;
-        return new Quote {
-            name = name,
-            messageId = message.Id,
-            channelId = message.Channel?.Id ?? 0,
-            createdAt = original?.createdAt ?? timestamp,
-            lastEditedAt = timestamp,
-            quoterId = quoterId,
+        while (true) {
+            // if we're just quoting a forwarded message, quote the forwarded message instead
+            IMessage? forwarded = await GetForwardedAsync(message);
+            if (forwarded is not null) {
+                message = forwarded;
+                continue;
+            }
 
-            authorId = message.Author.Id,
-            replyAuthorId = replyAuthorId,
-            jumpUrl = message.Channel is null ? null : message.GetJumpUrl(),
-
-            images = string.Join('|', images),
-            extraAttachments = extraAttachments,
-            content = message.Content
-        };
+            List<string> images = GetMessageImages(message);
+            int extraAttachments = message.Attachments.Count - images.Count;
+            ulong replyAuthorId = (await GetReplyAsync(message))?.Author.Id ?? 0;
+            return new Quote {
+                name = name,
+                messageId = message.Id,
+                channelId = message.Channel?.Id ?? 0,
+                createdAt = original?.createdAt ?? timestamp,
+                lastEditedAt = timestamp,
+                quoterId = quoterId,
+                authorId = message.Author.Id,
+                replyAuthorId = replyAuthorId,
+                jumpUrl = message.Channel is null ? null : message.GetJumpUrl(),
+                images = string.Join('|', images),
+                extraAttachments = extraAttachments,
+                content = message.Content
+            };
+        }
     }
 
     public static IEnumerable<Embed> QuoteToEmbeds(Quote quote) {
