@@ -7,7 +7,7 @@ ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["GeodeDiscord/GeodeDiscord.csproj", "GeodeDiscord/"]
 RUN dotnet restore "GeodeDiscord/GeodeDiscord.csproj"
-COPY . .
+COPY GeodeDiscord/. ./GeodeDiscord
 WORKDIR "/src/GeodeDiscord"
 RUN dotnet build "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
