@@ -15,15 +15,15 @@ namespace GeodeDiscord.Modules;
 public partial class IndexModule {
     private static string[] UnauthorizedResponses = [
         "❌ [BUZZER]",
-		"❌ Your princess is in another castle",
-		"❌ Absolutely not",
-		"❌ Get lost",
-		"❌ Sucks to be you",
-		"❌ No admin, laugh at this user",
-		"❌ Admin dashboard",
-		"❌ Why are we here? Just to suffer?",
-		"❌ You hacked the mainframe! Congrats.",
-		"❌ You're an admin, Harry",
+        "❌ Your princess is in another castle",
+        "❌ Absolutely not",
+        "❌ Get lost",
+        "❌ Sucks to be you",
+        "❌ No admin, laugh at this user",
+        "❌ Admin dashboard",
+        "❌ Why are we here? Just to suffer?",
+        "❌ You hacked the mainframe! Congrats.",
+        "❌ You're an admin, Harry",
     ];
 
     [Group("admin", "Administrate the Geode mod index."), UsedImplicitly]
