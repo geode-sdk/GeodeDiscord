@@ -1,21 +1,18 @@
 ﻿using System.Text;
-
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-
 using GeodeDiscord.Database;
 using GeodeDiscord.Database.Entities;
-
 using JetBrains.Annotations;
-
 using Microsoft.EntityFrameworkCore;
-
 using Serilog;
 
 namespace GeodeDiscord.Modules;
 
-[Group("sticky", "Give roles that save after rejoining the server."), DefaultMemberPermissions(GuildPermission.ManageRoles), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
+[Group("sticky", "Give roles that save after rejoining the server."),
+ DefaultMemberPermissions(GuildPermission.ManageRoles), CommandContextType(InteractionContextType.Guild),
+ UsedImplicitly]
 public class StickyModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
     public static Task OnUserJoined(SocketGuildUser user, ApplicationDbContext db) {
         List<StickyRole> roles = db.stickyRoles.Where(sr => sr.userId == user.Id).ToList();
@@ -39,7 +36,8 @@ public class StickyModule(ApplicationDbContext db) : InteractionModuleBase<Socke
 
     [SlashCommand("add", "Adds a sticky role to the user."), UsedImplicitly]
     public async Task Add([Autocomplete(typeof(RoleAutocompleteHandler))] string role,
-        [Summary(null, "User to add the role to.")] IUser user) {
+        [Summary(null, "User to add the role to.")]
+        IUser user) {
         if (!ulong.TryParse(role, out ulong roleId)) {
             await RespondAsync("❌ Role is invalid!", ephemeral: true);
             return;
@@ -102,7 +100,8 @@ public class StickyModule(ApplicationDbContext db) : InteractionModuleBase<Socke
 
     [SlashCommand("remove", "Remove a sticky role from the user."), UsedImplicitly]
     public async Task Remove([Autocomplete(typeof(RoleAutocompleteHandler))] string role,
-        [Summary(null, "User to remove the role from.")] IUser user) {
+        [Summary(null, "User to remove the role from.")]
+        IUser user) {
         if (!ulong.TryParse(role, out ulong roleId)) {
             await RespondAsync("❌ Role is invalid!", ephemeral: true);
             return;
@@ -122,7 +121,8 @@ public class StickyModule(ApplicationDbContext db) : InteractionModuleBase<Socke
         if (user is IGuildUser guildUser) {
             try {
                 await guildUser.RemoveRoleAsync(r);
-            } catch (Exception ex) {
+            }
+            catch (Exception ex) {
                 Log.Error(ex, "Failed to remove role from user");
                 await RespondAsync($"❌ Failed to remove role from user:\n{ex.Message}", ephemeral: true);
                 return;
@@ -131,8 +131,7 @@ public class StickyModule(ApplicationDbContext db) : InteractionModuleBase<Socke
 
         db.stickyRoles.Remove(sr);
         try { await db.SaveChangesAsync(); }
-        catch (Exception ex)
-        {
+        catch (Exception ex) {
             Log.Error(ex, "Failed to save sticky role");
             await RespondAsync("❌ Failed to save sticky role!", ephemeral: true);
             return;
