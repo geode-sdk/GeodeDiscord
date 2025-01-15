@@ -1,5 +1,6 @@
 using Discord;
 using Discord.Interactions;
+using Discord.WebSocket;
 using JetBrains.Annotations;
 
 using GeodeDiscord.Database;
@@ -13,7 +14,7 @@ using System.Text;
 namespace GeodeDiscord.Modules;
 
 public partial class IndexModule {
-    private static string[] UnauthorizedResponses = [
+    private static readonly string[] UnauthorizedResponses = [
         "❌ [BUZZER]",
         "❌ Your princess is in another castle",
         "❌ Absolutely not",
@@ -191,6 +192,8 @@ public partial class IndexModule {
             public required string Name { get; set; }
             [JsonProperty("description")]
             public required string Description { get; set; }
+            [JsonProperty("download_link")]
+            public required string DownloadLink { get; set; }
             [JsonProperty("direct_download_link")]
             public required string DirectDownloadLink { get; set; }
             [JsonProperty("hash")]
@@ -316,9 +319,9 @@ public partial class IndexModule {
             var total = data["payload"]?["count"]?.Value<int>() ?? 1;
 
             var embed = new EmbedBuilder()
-                .WithTitle(mod.Featured ? "⭐️ " : "" + version.Name)
+                .WithTitle((mod.Featured ? "⭐️ " : "") + version.Name)
                 .WithDescription(version.Description)
-                .WithUrl(GetWebsiteEndpoint($"/mods/{mod.Id}?version={version.Version}"))
+                .WithUrl($"https://geode-sdk.org/mods/{mod.Id}?version={version.Version}")
                 .WithFooter($"Page {page} of {total}")
                 .WithThumbnailUrl(GetAPIEndpoint($"/v1/mods/{mod.Id}/logo"))
                 .AddField("ID", mod.Id, true)
@@ -327,30 +330,28 @@ public partial class IndexModule {
                 .AddField("Early Load", version.EarlyLoad ? "Yes" : "No", true)
                 .AddField("API", version.API ? "Yes" : "No", true)
                 .AddField("Developers", string.Join(", ", mod.Developers.Select(d =>
-                    $"[{(d.IsOwner ? "**" : "")}{d.DisplayName}{(d.IsOwner ? "**" : "")}]({GetWebsiteEndpoint(
-                        $"/mods?developer={d.Username}")})")), true)
+                    $"[{(d.IsOwner ? "**" : "")}{d.DisplayName}{(
+                        d.IsOwner ? "**" : "")}](https://geode-sdk.org/mods?developer={d.Username})")), true)
                 .AddField("Geometry Dash", $"Windows: {version.GD.Windows ?? "N/A"}\n" +
                     $"Android (32-bit): {version.GD.Android32 ?? "N/A"}\n" +
                     $"Android (64-bit): {version.GD.Android64 ?? "N/A"}\n" +
                     $"macOS (Intel): {version.GD.MacIntel ?? "N/A"}\n" +
                     $"macOS (ARM): {version.GD.MacArm ?? "N/A"}", false)
                 .AddField("Dependencies", version.Dependencies.Count == 0 ? "None" :
-                    $"`{string.Join("`\n`", version.Dependencies.Select(d =>
-                        $"{d.ModId} {d.Version} ({d.Importance})"))}`", false)
+                    string.Join("\n", version.Dependencies.Select(d => $"`{d.ModId} {d.Version} ({d.Importance})`")), false)
                 .AddField("Incompatibilities", version.Incompatibilities.Count == 0 ? "None" :
-                    $"`{string.Join("`\n`", version.Incompatibilities.Select(d =>
-                        $"{d.ModId} {d.Version} ({d.Importance})"))}`", false)
+                    string.Join("\n", version.Incompatibilities.Select(d => $"`{d.ModId} {d.Version} ({d.Importance})`")), false)
                 .AddField("Source", mod.Links is not null && mod.Links.Source is not null ? mod.Links.Source : mod.Repository ?? "N/A", true)
                 .AddField("Community", mod.Links is not null ? mod.Links.Community ?? "N/A" : "N/A", true)
                 .AddField("Homepage", mod.Links is not null ? mod.Links.Homepage ?? "N/A" : "N/A", true)
                 .AddField("Hash", $"`{version.Hash}`", true)
-                .AddField("Download", version.DirectDownloadLink, true)
-                .AddField("Tags", mod.Tags.Count == 0 ? "None" : $"`{string.Join("`, `", mod.Tags)}`", true);
+                .AddField("Download", version.DirectDownloadLink ?? version.DownloadLink, true)
+                .AddField("Tags", mod.Tags.Count == 0 ? "None" : string.Join(", ", mod.Tags.Select(t => $"`{t}`")), true);
 
             var components = new ComponentBuilder()
                 .WithButton("Previous", "index/admin/previous", ButtonStyle.Primary, new Emoji("◀️"))
-                .WithButton("Accept", "index/admin/accept", ButtonStyle.Success, new Emoji("✅"))
-                .WithButton("Reject", "index/admin/reject", ButtonStyle.Danger, new Emoji("❌"))
+                .WithButton("Accept", "index/admin/accept:pending", ButtonStyle.Success, new Emoji("✅"))
+                .WithButton("Reject", "index/admin/reject:pending", ButtonStyle.Danger, new Emoji("❌"))
                 .WithButton("Next", "index/admin/next", ButtonStyle.Primary, new Emoji("▶️"))
                 .WithSelectMenu("index/admin/page", Enumerable.Range(1, total)
                     .Select(i => new SelectMenuOptionBuilder().WithLabel(i.ToString()).WithValue(i.ToString()))
@@ -405,22 +406,22 @@ public partial class IndexModule {
             await GetPage(page < count ? page + 1 : 1, null, null, false);
         }
 
-        [ComponentInteraction("accept"), UsedImplicitly]
-        public async Task Accept() {
+        [ComponentInteraction("accept:*"), UsedImplicitly]
+        public async Task Accept(string type) {
             var modal = new ModalBuilder()
                 .WithTitle("Accept Mod")
-                .WithCustomId("index/admin/confirm:accepted")
+                .WithCustomId($"index/admin/{type + "-"}confirm:accepted")
                 .AddTextInput("Reason", "reason", TextInputStyle.Paragraph, "Leave blank for no reason", required: false)
                 .Build();
 
             await RespondWithModalAsync(modal);
         }
 
-        [ComponentInteraction("reject"), UsedImplicitly]
-        public async Task Reject() {
+        [ComponentInteraction("reject:*"), UsedImplicitly]
+        public async Task Reject(string type) {
             var modal = new ModalBuilder()
                 .WithTitle("Reject Mod")
-                .WithCustomId("index/admin/confirm:rejected")
+                .WithCustomId($"index/admin/{type + "-"}confirm:rejected")
                 .AddTextInput("Reason", "reason", TextInputStyle.Paragraph, "Leave blank for no reason", required: false)
                 .Build();
 
@@ -443,7 +444,7 @@ public partial class IndexModule {
             public string? Reason { get; set; }
         }
 
-        [ModalInteraction("confirm:*"), UsedImplicitly]
+        [ModalInteraction("pending-confirm:*"), UsedImplicitly]
         public async Task UpdateModStatus(string status, ModStatusModal modal) {
             await DeferAsync(ephemeral: true);
 
@@ -477,6 +478,26 @@ public partial class IndexModule {
 
             if (!await CheckAdmin(httpClient, false)) return;
 
+            using var statusResponse = await httpClient.GetAsync(GetAPIEndpoint($"/v1/mods/{id}/versions/{version}"));
+            if (!statusResponse.IsSuccessStatusCode) {
+                await ModifyOriginalResponseAsync(async p =>
+                    p.Content = await GetError(statusResponse, "An error occurred while getting the mod status"));
+                return;
+            }
+
+            var statusJson = await statusResponse.Content.ReadAsStringAsync();
+            var statusData = JsonConvert.DeserializeObject<JObject>(statusJson);
+            if (statusData is null || statusData["payload"] is null) {
+                await ModifyOriginalResponseAsync(p => p.Content = "❌ An error occurred while parsing the mod status response.");
+                return;
+            }
+
+            if (statusData["payload"]?["status"]?.ToString() != "pending") {
+                await ModifyOriginalResponseAsync(p => p.Content = "❌ Mod is no longer pending.");
+                await GetPage(page, indexToken, httpClient, false);
+                return;
+            }
+
             using var response = await httpClient.PutAsync(GetAPIEndpoint($"/v1/mods/{id}/versions/{version}"),
                 new StringContent(JsonConvert.SerializeObject(new { status, info = modal.Reason }),
                 Encoding.UTF8, "application/json"));
@@ -486,10 +507,59 @@ public partial class IndexModule {
                 return;
             }
 
-            await ModifyOriginalResponseAsync(p =>
-                p.Content = $"✅ Successfully {status.Replace("ing", "ed")} **{name} {version}**!");
+            await ModifyOriginalResponseAsync(p => p.Content = $"✅ Successfully {status} **{name} {version}**!");
 
             await GetPage(page, indexToken, httpClient, false);
+        }
+
+        [ModalInteraction("forum-confirm:*"), UsedImplicitly]
+        public async Task UpdateForumModStatus(string status, ModStatusModal modal) {
+            if (Context.Channel is not SocketThreadChannel threadChannel) return;
+            if (threadChannel.IsLocked) return;
+
+            var splitName = threadChannel.Name.Split(" ");
+            var id = splitName[^2].Trim('(', ')');
+            var version = splitName[^1];
+
+            var indexToken = await db.indexTokens.FindAsync(Context.User.Id);
+            if (indexToken is null) {
+                await RespondAsync("❌ You must log in to your Geode account first.", ephemeral: true);
+                return;
+            }
+
+            var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Authorization = new("Bearer", indexToken.indexToken);
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "GeodeDiscord");
+            using var statusResponse = await httpClient.GetAsync(GetAPIEndpoint($"/v1/mods/{id}/versions/{version}"));
+            if (!statusResponse.IsSuccessStatusCode) {
+                await RespondAsync(await GetError(statusResponse,
+                    "An error occurred while getting the mod status"), ephemeral: true);
+                return;
+            }
+
+            var statusJson = await statusResponse.Content.ReadAsStringAsync();
+            var statusData = JsonConvert.DeserializeObject<JObject>(statusJson);
+            if (statusData is null || statusData["payload"] is null) {
+                await RespondAsync("❌ An error occurred while parsing the mod status response.", ephemeral: true);
+                return;
+            }
+
+            var pendingStatus = statusData["payload"]?["status"]?.ToString();
+            if (pendingStatus != "pending") {
+                await RespondAsync("❌ Mod is no longer pending.", ephemeral: true);
+                return;
+            }
+
+            using var response = await httpClient.PutAsync(GetAPIEndpoint($"/v1/mods/{id}/versions/{version}"),
+                new StringContent(JsonConvert.SerializeObject(new { status, info = modal.Reason }),
+                Encoding.UTF8, "application/json"));
+            if (!response.IsSuccessStatusCode) {
+                await RespondAsync(await GetError(response,
+                    $"An error occurred while {status.Replace("ed", "ing")} the mod"), ephemeral: true);
+                return;
+            }
+
+            await RespondAsync($"✅ {status[0].ToString().ToUpper() + status[1..]} successfully.", ephemeral: true);
         }
     }
 }

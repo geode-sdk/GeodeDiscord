@@ -1,4 +1,6 @@
 using Discord.Interactions;
+using Discord.Rest;
+using Discord.WebSocket;
 using JetBrains.Annotations;
 
 using GeodeDiscord.Database;
@@ -14,10 +16,8 @@ namespace GeodeDiscord.Modules;
 [Group("index", "Interact with the Geode mod index."), UsedImplicitly]
 public partial class IndexModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
     public static string APIEndpoint { get; } = Environment.GetEnvironmentVariable("GEODE_API") ?? "https://api.geode-sdk.org";
-    public static string WebsiteEndpoint { get; } = Environment.GetEnvironmentVariable("GEODE_WEBSITE") ?? "https://geode-sdk.org";
 
     public static string GetAPIEndpoint(string path) => $"{APIEndpoint}{path}";
-    public static string GetWebsiteEndpoint(string path) => $"{WebsiteEndpoint}{path}";
 
     public static async Task<string> GetError(HttpResponseMessage response, string message) {
         if (response.IsSuccessStatusCode) return "";
@@ -28,7 +28,7 @@ public partial class IndexModule(ApplicationDbContext db) : InteractionModuleBas
             return $"❌ {message}.";
         }
 
-        return $"❌ {message}: `{data["error"]?.Value<string>()}`.";
+        return $"❌ {message}: `{data["error"]?.ToString()}`.";
     }
 
     [SlashCommand("login", "Log in to your Geode account."), UsedImplicitly]
@@ -60,12 +60,13 @@ public partial class IndexModule(ApplicationDbContext db) : InteractionModuleBas
             return;
         }
 
-        try {
-            await db.SaveChangesAsync();
-            await RespondAsync("✅ Successfully logged in as **" + data["payload"]?["display_name"] + "**!", ephemeral: true);
-        } catch (DbUpdateException) {
+        try { await db.SaveChangesAsync(); }
+        catch (DbUpdateException) {
             await RespondAsync("❌ An error occurred while saving your token.", ephemeral: true);
+            return;
         }
+
+        await RespondAsync("✅ Successfully logged in as **" + data["payload"]?["display_name"] + "**!", ephemeral: true);
     }
 
     [SlashCommand("logout", "Log out of your Geode account."), UsedImplicitly]
@@ -78,29 +79,27 @@ public partial class IndexModule(ApplicationDbContext db) : InteractionModuleBas
 
         db.indexTokens.Remove(indexToken);
 
-        try {
-            await db.SaveChangesAsync();
-            if (!invalidate) {
-                await RespondAsync("✅ Successfully logged out!", ephemeral: true);
-                return;
-            }
-        } catch (DbUpdateException) {
+        try { await db.SaveChangesAsync(); }
+        catch (DbUpdateException) {
             await RespondAsync("❌ An error occurred while updating login status.", ephemeral: true);
             return;
         }
 
-        if (invalidate) {
-            var httpClient = new HttpClient();
-            httpClient.DefaultRequestHeaders.Authorization = new("Bearer", indexToken.indexToken);
-            httpClient.DefaultRequestHeaders.Add("User-Agent", "GeodeDiscord");
-            using var response = await httpClient.DeleteAsync(GetAPIEndpoint("/v1/me/token"));
-            if (!response.IsSuccessStatusCode) {
-                await RespondAsync(await GetError(response, "An error occurred while invalidating the token"), ephemeral: true);
-                return;
-            }
-
-            await RespondAsync("✅ Successfully logged out and invalidated token!", ephemeral: true);
+        if (!invalidate) {
+            await RespondAsync("✅ Successfully logged out!", ephemeral: true);
+            return;
         }
+
+        var httpClient = new HttpClient();
+        httpClient.DefaultRequestHeaders.Authorization = new("Bearer", indexToken.indexToken);
+        httpClient.DefaultRequestHeaders.Add("User-Agent", "GeodeDiscord");
+        using var response = await httpClient.DeleteAsync(GetAPIEndpoint("/v1/me/token"));
+        if (!response.IsSuccessStatusCode) {
+            await RespondAsync(await GetError(response, "An error occurred while invalidating the token"), ephemeral: true);
+            return;
+        }
+
+        await RespondAsync("✅ Successfully logged out and invalidated token!", ephemeral: true);
     }
 
     [SlashCommand("invalidate", "Log out and invalidate all tokens."), UsedImplicitly]
@@ -112,9 +111,8 @@ public partial class IndexModule(ApplicationDbContext db) : InteractionModuleBas
         }
 
         db.indexTokens.Remove(indexToken);
-        try {
-            await db.SaveChangesAsync();
-        } catch (DbUpdateException) {
+        try { await db.SaveChangesAsync(); }
+        catch (DbUpdateException) {
             await RespondAsync("❌ An error occurred while updating login status.", ephemeral: true);
             return;
         }

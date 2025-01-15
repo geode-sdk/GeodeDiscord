@@ -125,128 +125,14 @@ public partial class IndexModule {
             await RespondAsync("✅ Successfully removed developer from mod!", ephemeral: true);
         }
 
-        [JsonObject]
-        public class SimpleModVersion {
-            [JsonProperty("name")]
-            public required string Name { get; set; }
-            [JsonProperty("version")]
-            public required string Version { get; set; }
-        }
-
-        [JsonObject]
-        public class SimpleMod {
-            [JsonProperty("id")]
-            public required string Id { get; set; }
-            [JsonProperty("featured")]
-            public bool Featured { get; set; }
-            [JsonProperty("versions")]
-            public required List<SimpleModVersion> Versions { get; set; }
-        }
-
-        private static readonly Dictionary<ulong, List<SimpleMod>> MessageData = [];
-
         [SlashCommand("pending", "View your pending mods on the Geode index."), UsedImplicitly]
         public async Task Pending() {
-            var indexToken = await db.indexTokens.FindAsync(Context.User.Id);
-            if (indexToken is null) {
-                await RespondAsync("❌ You must log in to your Geode account first.", ephemeral: true);
-                return;
-            }
-
-            var httpClient = new HttpClient();
-            httpClient.DefaultRequestHeaders.Authorization = new("Bearer", indexToken.indexToken);
-            httpClient.DefaultRequestHeaders.Add("User-Agent", "GeodeDiscord");
-            using var response = await httpClient.GetAsync(GetAPIEndpoint("/v1/me/mods?status=pending"));
-            if (!response.IsSuccessStatusCode) {
-                await RespondAsync(await GetError(response, "An error occurred while getting your pending mods"), ephemeral: true);
-                return;
-            }
-
-            var json = await response.Content.ReadAsStringAsync();
-            var data = JsonConvert.DeserializeObject<JObject>(json);
-            if (data is null || data["payload"] is null) {
-                await RespondAsync("❌ An error occurred while parsing your pending mods response.", ephemeral: true);
-                return;
-            }
-
-            if (data["payload"]?.Count() == 0) {
-                await RespondAsync("❌ You have no pending mods!", ephemeral: true);
-                return;
-            }
-
-            var mods = data["payload"]?.ToObject<List<SimpleMod>>();
-            if (mods is null) {
-                await RespondAsync("❌ An error occurred while parsing your pending mods response.", ephemeral: true);
-                return;
-            }
-
-            var component = new ComponentBuilder()
-                .WithButton("Previous", "index/mods/previous:pending", ButtonStyle.Primary, new Emoji("◀️"))
-                .WithButton("Next", "index/mods/next:pending", ButtonStyle.Primary, new Emoji("▶️"))
-                .WithSelectMenu("index/mods/select:pending", mods.Select(mod =>
-                    new SelectMenuOptionBuilder()
-                        .WithLabel(mod.Versions[0].Name)
-                        .WithValue(mods.FindIndex(m => m.Id == mod.Id).ToString())).ToList(), "Select a mod...");
-
-            await RespondAsync(components: component.Build(), ephemeral: true);
-
-            var message = await Context.Interaction.GetOriginalResponseAsync();
-
-            MessageData[message.Id] = mods;
-
-            await GoToPage(0, false);
+            await GoToPage(0, false, true);
         }
 
         [SlashCommand("published", "View your published mods on the Geode index."), UsedImplicitly]
         public async Task Published() {
-            var indexToken = await db.indexTokens.FindAsync(Context.User.Id);
-            if (indexToken is null) {
-                await RespondAsync("❌ You must log in to your Geode account first.", ephemeral: true);
-                return;
-            }
-
-            var httpClient = new HttpClient();
-            httpClient.DefaultRequestHeaders.Authorization = new("Bearer", indexToken.indexToken);
-            httpClient.DefaultRequestHeaders.Add("User-Agent", "GeodeDiscord");
-            using var response = await httpClient.GetAsync(GetAPIEndpoint("/v1/me/mods?status=accepted"));
-            if (!response.IsSuccessStatusCode) {
-                await RespondAsync(await GetError(response, "An error occurred while getting your published mods"), ephemeral: true);
-                return;
-            }
-
-            var json = await response.Content.ReadAsStringAsync();
-            var data = JsonConvert.DeserializeObject<JObject>(json);
-            if (data is null || data["payload"] is null) {
-                await RespondAsync("❌ An error occurred while parsing your published mods response.", ephemeral: true);
-                return;
-            }
-
-            if (data["payload"]?.Count() == 0) {
-                await RespondAsync("❌ You have no published mods!", ephemeral: true);
-                return;
-            }
-
-            var mods = data["payload"]?.ToObject<List<SimpleMod>>();
-            if (mods is null) {
-                await RespondAsync("❌ An error occurred while parsing your published mods response.", ephemeral: true);
-                return;
-            }
-
-            var component = new ComponentBuilder()
-                .WithButton("Previous", "index/mods/previous:published", ButtonStyle.Primary, new Emoji("◀️"))
-                .WithButton("Next", "index/mods/next:published", ButtonStyle.Primary, new Emoji("▶️"))
-                .WithSelectMenu("index/mods/select:published", mods.Select(mod =>
-                    new SelectMenuOptionBuilder()
-                        .WithLabel(mod.Versions[0].Name)
-                        .WithValue(mods.FindIndex(m => m.Id == mod.Id).ToString())).ToList(), "Select a mod...");
-
-            await RespondAsync(components: component.Build(), ephemeral: true);
-
-            var message = await Context.Interaction.GetOriginalResponseAsync();
-
-            MessageData[message.Id] = mods;
-
-            await GoToPage(0, true);
+            await GoToPage(0, true, true);
         }
 
         [ComponentInteraction("previous:*"), UsedImplicitly]
@@ -254,7 +140,6 @@ public partial class IndexModule {
             await DeferAsync(ephemeral: true);
 
             var message = await Context.Interaction.GetOriginalResponseAsync();
-            if (!MessageData.TryGetValue(message.Id, out List<SimpleMod>? mods)) return;
 
             var embeds = message.Embeds;
             if (embeds.Count == 0) return;
@@ -262,8 +147,10 @@ public partial class IndexModule {
             var footer = embeds.ElementAt(0).Footer;
             if (footer is null) return;
 
-            var page = int.Parse(footer.Value.Text.Split(' ')[1]) - 2;
-            await GoToPage(page >= 0 ? page : mods.Count - 1, command.EndsWith("published"));
+            var splitFooter = footer.Value.Text.Split(' ');
+            var page = int.Parse(splitFooter[1]) - 2;
+            var total = int.Parse(splitFooter[3]);
+            await GoToPage(page >= 0 ? page : total - 1, command.EndsWith("published"), false);
         }
 
         [ComponentInteraction("next:*"), UsedImplicitly]
@@ -271,7 +158,6 @@ public partial class IndexModule {
             await DeferAsync(ephemeral: true);
 
             var message = await Context.Interaction.GetOriginalResponseAsync();
-            if (!MessageData.TryGetValue(message.Id, out List<SimpleMod>? mods)) return;
 
             var embeds = message.Embeds;
             if (embeds.Count == 0) return;
@@ -279,34 +165,85 @@ public partial class IndexModule {
             var footer = embeds.ElementAt(0).Footer;
             if (footer is null) return;
 
-            var page = int.Parse(footer.Value.Text.Split(' ')[1]);
-            await GoToPage(page < mods.Count ? page : 0, command.EndsWith("published"));
+            var splitFooter = footer.Value.Text.Split(' ');
+            var page = int.Parse(splitFooter[1]);
+            var total = int.Parse(splitFooter[3]);
+            await GoToPage(page < total ? page : 0, command.EndsWith("published"), false);
         }
 
         [ComponentInteraction("select:*"), UsedImplicitly]
         public async Task SelectMod(string command, string page) {
             await DeferAsync(ephemeral: true);
 
-            await GoToPage(int.Parse(page), command.EndsWith("published"));
+            await GoToPage(int.Parse(page), command.EndsWith("published"), false);
         }
 
-        public async Task GoToPage(int page, bool published) {
-            var message = await Context.Interaction.GetOriginalResponseAsync();
-            var mods = MessageData[message.Id];
-            if (mods is null) return;
+        public async Task GoToPage(int page, bool published, bool respond) {
+            var indexToken = await db.indexTokens.FindAsync(Context.User.Id);
+            if (indexToken is null) {
+                if (respond) await RespondAsync("❌ You must log in to your Geode account first.", ephemeral: true);
+                return;
+            }
+
+            var modType = published ? "published" : "pending";
+
+            var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Authorization = new("Bearer", indexToken.indexToken);
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "GeodeDiscord");
+            using var response = await httpClient.GetAsync(
+                GetAPIEndpoint($"/v1/me/mods?status={(published ? "accepted" : "pending")}"));
+            if (!response.IsSuccessStatusCode) {
+                if (respond) await RespondAsync(
+                    await GetError(response, $"An error occurred while getting your {modType} mods"), ephemeral: true);
+                return;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var data = JsonConvert.DeserializeObject<JObject>(json);
+            if (data is null || data["payload"] is null) {
+                if (respond) await RespondAsync(
+                    $"❌ An error occurred while parsing your {modType} mods response.", ephemeral: true);
+                return;
+            }
+
+            if (data["payload"]?.Count() == 0) {
+                if (respond) await RespondAsync($"❌ You have no {modType} mods!", ephemeral: true);
+                return;
+            }
+
+            var mods = data["payload"]?.ToList();
+            if (mods is null) {
+                if (respond) await RespondAsync(
+                    $"❌ An error occurred while parsing your {modType} mods response.", ephemeral: true);
+                return;
+            }
+
+            mods.Sort((a, b) => a["id"]?.ToString().CompareTo(b["id"]?.ToString()) ?? 0);
+
+            var components = new ComponentBuilder()
+                .WithButton("Previous", $"index/mods/previous:{modType}", ButtonStyle.Primary, new Emoji("◀️"))
+                .WithButton("Next", $"index/mods/next:{modType}", ButtonStyle.Primary, new Emoji("▶️"))
+                .WithSelectMenu($"index/mods/select:{modType}", mods.Select(mod =>
+                    new SelectMenuOptionBuilder()
+                        .WithLabel(mod["versions"]?[0]?["name"]?.ToString())
+                        .WithValue(mods.FindIndex(m =>
+                            m["id"]?.ToString() == mod["id"]?.ToString()).ToString())).ToList(), "Select a mod...");
+
+            if (page >= mods.Count) page = mods.Count - 1;
 
             var mod = mods[page];
             if (mod is null) return;
 
             var embed = new EmbedBuilder()
-                .WithTitle((mod.Featured ? "⭐️ " : "") + mod.Versions[0].Name)
-                .AddField($"{(published ? "Published" : "Pending")} versions",
-                    $"`{string.Join("`, `", mod.Versions.Select(version => version.Version))}`")
-                .WithThumbnailUrl(GetAPIEndpoint($"/v1/mods/{mod.Id}/logo"))
+                .WithTitle((mod["featured"]?.Value<bool>() ?? false ? "⭐️ " : "") + mod["versions"]?[0]?["name"]?.ToString())
+                .AddField($"{modType[0].ToString().ToUpper() + modType[1..]} versions",
+                    string.Join(", ", mod["versions"]?.Select(v => $"`{v["version"]}`") ?? []))
+                .WithThumbnailUrl(GetAPIEndpoint($"/v1/mods/{mod["id"]}/logo"))
                 .WithFooter($"Page {page + 1} of {mods.Count}")
-                .WithUrl(GetWebsiteEndpoint($"/mods/{mod.Id}"));
+                .WithUrl($"https://geode-sdk.org/mods/{mod["id"]}");
 
-            await ModifyOriginalResponseAsync(props => props.Embeds = new[] { embed.Build() });
+            if (respond) await RespondAsync(embed: embed.Build(), components: components.Build(), ephemeral: true);
+            else await ModifyOriginalResponseAsync(p => p.Embeds = new[] { embed.Build() });
         }
     }
 }
