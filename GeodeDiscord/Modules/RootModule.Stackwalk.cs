@@ -58,8 +58,9 @@ public partial class RootModule {
             process.StartInfo.CreateNoWindow = true;
             process.StartInfo.UseShellExecute = false;
             process.StartInfo.FileName = Environment.GetEnvironmentVariable("GEODE_BOT_STACKWALK_PATH") ?? "./minidump-stackwalk";
+            string symbolServer = Environment.GetEnvironmentVariable("GEODE_BOT_SYMBOL_SERVER") ?? "https://symbols.xyze.dev/";
             process.StartInfo.Arguments =
-                $"--output-file {logPath} --symbols-url https://symbols.xyze.dev/ {dumpPath} {sym1Path} {sym2Path}";
+                $"--output-file {logPath} --symbols-url {symbolServer} {dumpPath} {sym1Path} {sym2Path}";
             process.Start();
             await process.WaitForExitAsync();
 
