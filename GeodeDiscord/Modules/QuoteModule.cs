@@ -169,7 +169,7 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
             else {
                 stats.AppendLine("- ...none of which were correct.");
             }
-            if (guess.maxStreak != 1)
+            if (guess.maxStreak > 1)
                 stats.AppendLine($"- Achieved a maximum streak **{guess.maxStreak}** correct guesses in a row.");
         }
 
