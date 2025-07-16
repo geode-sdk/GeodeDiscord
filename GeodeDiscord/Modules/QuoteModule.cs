@@ -128,6 +128,7 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
 
     [SlashCommand("leaderboard", "Shows top 10 most quoted users."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task GetLeaderboard() {
+        await DeferAsync();
         IEnumerable<string> lines = db.quotes
             .GroupBy(x => x.authorId)
             .Select(x => new {
@@ -138,7 +139,7 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
             .Take(10)
             .AsEnumerable()
             .Select((x, i) => $"{i + 1}. <@{x.authorId}> - **{x.quoteCount}** quotes");
-        await RespondAsync($"## 🏆 10 most quoted users:\n{string.Join("\n", lines)}",
+        await FollowupAsync($"## 🏆 10 most quoted users:\n{string.Join("\n", lines)}",
             allowedMentions: AllowedMentions.None);
     }
 
