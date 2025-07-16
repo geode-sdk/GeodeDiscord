@@ -38,9 +38,8 @@ public partial class QuoteModule {
 
         IQueryable<Quote> quotes = db.quotes
             .Where(x => x.extraAttachments == 0) // extra attachments require forwarding right now :<
-            .GroupBy(x => x.authorId)
             .OrderBy(_ => EF.Functions.Random())
-            .Select(x => x.OrderBy(_ => EF.Functions.Random()).First());
+            .Take(10); // surely 10 is gonna be enough to find one
 
         Quote? quote = null;
         string? quoteAuthorName = null;
