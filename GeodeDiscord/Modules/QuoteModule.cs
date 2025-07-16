@@ -145,6 +145,8 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
 
     [SlashCommand("stats", "Shows some quote related stats."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task GetStats(IUser? user = null) {
+        await DeferAsync();
+
         user ??= Context.User;
 
         StringBuilder stats = new();
