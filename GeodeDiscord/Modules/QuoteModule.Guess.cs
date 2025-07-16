@@ -104,9 +104,9 @@ public partial class QuoteModule {
                 inter is SocketMessageComponent msg &&
                 msg.Message.Id == response.Id
         );
-        // if timed out, remove the buttons
+        // remove buttons on timeout or interaction
+        await response.ModifyAsync(msg => msg.Components = new ComponentBuilder().Build());
         if (interaction is null) {
-            await response.ModifyAsync(msg => msg.Components = new ComponentBuilder().Build());
             await FollowupAsync(
                 text: "Time's up!",
                 components: new ComponentBuilder()
