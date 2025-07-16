@@ -87,7 +87,7 @@ public partial class QuoteModule {
         foreach ((ulong id, string name) in users) {
             components.WithButton(
                 name,
-                $"quote/guess-button:{quote.messageId},{id}",
+                $"quote/guess-button:{id}",
                 ButtonStyle.Secondary
             );
         }
@@ -97,41 +97,27 @@ public partial class QuoteModule {
             embeds: Util.QuoteToCensoredEmbeds(quote).ToArray(),
             components: components.Build()
         );
-        SocketInteraction? interaction = await InteractionUtility.WaitForInteractionAsync(Context.Client,
+        SocketMessageComponent? interaction = await InteractionUtility.WaitForInteractionAsync(
+            Context.Client,
             TimeSpan.FromSeconds(60d),
             inter =>
                 inter.Type == InteractionType.MessageComponent &&
                 inter is SocketMessageComponent msg &&
-                msg.Message.Id == response.Id
-        );
-        // remove buttons on timeout or interaction
-        await response.ModifyAsync(msg => msg.Components = new ComponentBuilder().Build());
-        if (interaction is null) {
-            await FollowupAsync(
-                text: "Time's up!",
-                components: new ComponentBuilder()
-                    .WithButton("Guess again!", "quote/guess-again", ButtonStyle.Secondary)
-                    .Build()
-            );
-        }
+                msg.Message.Id == response.Id &&
+                msg.Data.CustomId.StartsWith("quote/guess-button:")
+        ) as SocketMessageComponent;
+        string? guessId = interaction?.Data.CustomId["quote/guess-button:".Length..];
+        await response.ModifyAsync(x => {
+            x.Content = guessId is null ? "### Time's up!" : quote.authorId == ulong.Parse(guessId) ?
+                $"### ✅ {Context.User.Mention} guessed correctly! This quote is by <@{guessId}>:" :
+                $"### ❌ {Context.User.Mention} guessed incorrectly! This quote is not by <@{guessId}>:";
+            x.Embeds = Util.QuoteToEmbeds(quote).ToArray();
+            x.Components = new ComponentBuilder()
+                .WithButton("Guess again!", "quote/guess-again", ButtonStyle.Secondary)
+                .Build();
+        });
     }
 
-    [ComponentInteraction("guess-button:*,*"), UsedImplicitly]
-    private async Task GuessButton(string messageId, string guessId) {
-        Quote? quote = await db.quotes.FindAsync(ulong.Parse(messageId));
-        if (quote is null) {
-            await RespondAsync("❌ Quote not found!", ephemeral: true);
-            return;
-        }
-        await RespondAsync(
-            text: quote.authorId == ulong.Parse(guessId) ?
-                $"### ✅ {Context.User.Mention} guessed correctly! This quote is by <@{guessId}>:" :
-                $"### ❌ {Context.User.Mention} guessed incorrectly! This quote is not by <@{guessId}>:",
-            allowedMentions: AllowedMentions.None,
-            embeds: Util.QuoteToEmbeds(quote).ToArray(),
-            components: new ComponentBuilder()
-                .WithButton("Guess again!", "quote/guess-again", ButtonStyle.Secondary)
-                .Build()
-        );
-    }
+    [ComponentInteraction("guess-button:*"), UsedImplicitly]
+    private async Task GuessButton(string guessId) => await DeferAsync();
 }
