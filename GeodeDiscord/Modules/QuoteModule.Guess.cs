@@ -101,8 +101,7 @@ public partial class QuoteModule {
         foreach ((ulong id, string name) in users) {
             components.WithButton(
                 name,
-                $"quote/guess-button:{id}",
-                ButtonStyle.Secondary
+                $"quote/guess-button:{id}"
             );
         }
         IUserMessage response = await FollowupAsync(
@@ -121,20 +120,54 @@ public partial class QuoteModule {
                 msg.Message.Id == response.Id &&
                 msg.Data.CustomId.StartsWith("quote/guess-button:")
         ) as SocketMessageComponent;
-        string? guessId = interaction?.Data.CustomId["quote/guess-button:".Length..];
+        ulong guessId = ulong.Parse(interaction?.Data.CustomId["quote/guess-button:".Length..] ?? "0");
 
+        Embed[] quoteEmbeds = Util.QuoteToEmbeds(quote).ToArray();
         await response.ModifyAsync(x => {
-            x.Content = guessId is null ? "### Time's up!" : quote.authorId == ulong.Parse(guessId) ?
+            x.Content = guessId == 0 ? "### Time's up!" : quote.authorId == guessId ?
                 $"### ✅ {Context.User.Mention} guessed correctly! This quote is by <@{guessId}>:" :
                 $"### ❌ {Context.User.Mention} guessed incorrectly! This quote is not by <@{guessId}>:";
             x.AllowedMentions = AllowedMentions.None;
-            x.Embeds = Util.QuoteToEmbeds(quote).ToArray();
-            x.Components = new ComponentBuilder()
-                .WithButton("Guess again!", "quote/guess-again", ButtonStyle.Secondary)
-                .Build();
+            x.Embeds = quoteEmbeds;
+            ComponentBuilder component = new ComponentBuilder()
+                .WithButton("Guess again!", "quote/guess-again", ButtonStyle.Primary, new Emoji("❓"));
+            if (guessId != 0)
+                component.WithButton("Fix names", "quote/guess-fix-names", ButtonStyle.Secondary, new Emoji("🔧"));
+            x.Components = component.Build();
         });
+
+        if (guessId == 0)
+            return;
+
+        SocketInteraction? fixNamesInter = await InteractionUtility.WaitForInteractionAsync(
+            Context.Client,
+            TimeSpan.FromSeconds(20d),
+            inter =>
+                inter.Type == InteractionType.MessageComponent &&
+                inter is SocketMessageComponent msg &&
+                msg.Message.Id == response.Id &&
+                msg.Data.CustomId == "quote/guess-fix-names"
+        );
+        if (fixNamesInter is not null) {
+            string guessName = await GetUserNameAsync(guessId) ?? guessId.ToString();
+            string correctName = quote.authorId == guessId ? guessName :
+                await GetUserNameAsync(quote.authorId) ?? quote.authorId.ToString();
+            await response.ModifyAsync(x => {
+                x.Content = quote.authorId == guessId ?
+                    $"### ✅ {Context.User.Mention} guessed correctly! This quote is by **{guessName}**:" :
+                    $"### ❌ {Context.User.Mention} guessed incorrectly! This quote is by **{correctName}**, not *{guessName}*:";
+                x.AllowedMentions = AllowedMentions.None;
+                x.Embeds = quoteEmbeds;
+                x.Components = new ComponentBuilder()
+                    .WithButton("Guess again!", "quote/guess-again", ButtonStyle.Primary, new Emoji("❓"))
+                    .Build();
+            });
+        }
     }
 
     [ComponentInteraction("guess-button:*"), UsedImplicitly]
     private async Task GuessButton(string guessId) => await DeferAsync();
+
+    [ComponentInteraction("guess-fix-names"), UsedImplicitly]
+    private async Task GuessFixNames() => await DeferAsync();
 }
