@@ -35,13 +35,15 @@ public partial class QuoteModule {
     [ComponentInteraction("guess-again")]
     public async Task Guess() {
         await DeferAsync();
-        Quote? quote = null;
-        string? quoteAuthorName = null;
+
         IQueryable<Quote> quotes = db.quotes
             .Where(x => x.extraAttachments == 0) // extra attachments require forwarding right now :<
             .GroupBy(x => x.authorId)
             .OrderBy(_ => EF.Functions.Random())
             .Select(x => x.OrderBy(_ => EF.Functions.Random()).First());
+
+        Quote? quote = null;
+        string? quoteAuthorName = null;
         foreach (Quote x in quotes) {
             string? name = await GetUserNameAsync(x.authorId);
             if (name is null)
@@ -50,11 +52,14 @@ public partial class QuoteModule {
             quoteAuthorName = name;
             break;
         }
+
         if (quote is null || quoteAuthorName is null) {
             await RespondAsync("❌ Couldn't find a quote!", ephemeral: true);
             return;
         }
+
         HashSet<(ulong id, string name)> selectedUsers = [ (quote.authorId, quoteAuthorName) ];
+
         List<(ulong id, string name, int weight)> leaderboard = await db.quotes
             .GroupBy(x => x.authorId)
             .Select(x => new { id = x.Key, weight = x.Count() })
@@ -64,13 +69,19 @@ public partial class QuoteModule {
             .Where(x => x.name is not null)
             .Select(x => (x.id, name: x.name!, x.weight))
             .ToListAsync();
+
         int minIndex = leaderboard.FindIndex(x => x.id == quote.authorId);
         leaderboard.RemoveAt(minIndex);
-        minIndex = Math.Max(minIndex - 5, 0);
-        int maxIndex = Math.Min(minIndex + 10, leaderboard.Count);
+
+        const int leaderboardRange = 5;
+        const int guessOptions = 5;
+
+        minIndex = Math.Max(minIndex - leaderboardRange, 0);
+        int maxIndex = Math.Min(minIndex + leaderboardRange * 2, leaderboard.Count);
         leaderboard = leaderboard[minIndex..maxIndex];
+
         int totalWeight = leaderboard.Sum(x => x.weight);
-        while (leaderboard.Count > 0 && selectedUsers.Count < 5) {
+        while (leaderboard.Count > 0 && selectedUsers.Count < guessOptions) {
             int rand = Random.Shared.Next(0, totalWeight);
             for (int j = 0; j < leaderboard.Count; j++) {
                 rand -= leaderboard[j].weight;
@@ -82,8 +93,10 @@ public partial class QuoteModule {
                 break;
             }
         }
+
         (ulong id, string name)[] users = selectedUsers.ToArray();
         Random.Shared.Shuffle(users);
+
         ComponentBuilder components = new();
         foreach ((ulong id, string name) in users) {
             components.WithButton(
@@ -98,6 +111,7 @@ public partial class QuoteModule {
             embeds: Util.QuoteToCensoredEmbeds(quote).ToArray(),
             components: components.Build()
         );
+
         SocketMessageComponent? interaction = await InteractionUtility.WaitForInteractionAsync(
             Context.Client,
             TimeSpan.FromSeconds(60d),
@@ -108,6 +122,7 @@ public partial class QuoteModule {
                 msg.Data.CustomId.StartsWith("quote/guess-button:")
         ) as SocketMessageComponent;
         string? guessId = interaction?.Data.CustomId["quote/guess-button:".Length..];
+
         await response.ModifyAsync(x => {
             x.Content = guessId is null ? "### Time's up!" : quote.authorId == ulong.Parse(guessId) ?
                 $"### ✅ {Context.User.Mention} guessed correctly! This quote is by <@{guessId}>:" :
