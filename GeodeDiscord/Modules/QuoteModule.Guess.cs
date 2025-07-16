@@ -1,4 +1,5 @@
-﻿using Discord;
+﻿using System.Collections.Concurrent;
+using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 
@@ -13,7 +14,7 @@ using Serilog;
 namespace GeodeDiscord.Modules;
 
 public partial class QuoteModule {
-    private static readonly Dictionary<ulong, IUser?> extraUserCache = [];
+    private static readonly ConcurrentDictionary<ulong, IUser?> extraUserCache = [];
 
     private async Task<IUser?> GetUserAsync(ulong id) {
         IUser? user = Context.Client.GetUser(id);
@@ -111,6 +112,7 @@ public partial class QuoteModule {
             x.Content = guessId is null ? "### Time's up!" : quote.authorId == ulong.Parse(guessId) ?
                 $"### ✅ {Context.User.Mention} guessed correctly! This quote is by <@{guessId}>:" :
                 $"### ❌ {Context.User.Mention} guessed incorrectly! This quote is not by <@{guessId}>:";
+            x.AllowedMentions = AllowedMentions.None;
             x.Embeds = Util.QuoteToEmbeds(quote).ToArray();
             x.Components = new ComponentBuilder()
                 .WithButton("Guess again!", "quote/guess-again", ButtonStyle.Secondary)
