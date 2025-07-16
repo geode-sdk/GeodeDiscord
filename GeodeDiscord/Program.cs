@@ -72,6 +72,14 @@ public static class Program {
             await StickyModule.OnUserJoined(user, services.GetRequiredService<ApplicationDbContext>());
         };
 
+        client.Ready += async () => {
+            Log.Information("Caching all users");
+            await client.DownloadUsersAsync(client.Guilds);
+        };
+        client.GuildMembersDownloaded += async guild => {
+            Log.Information("{Count} members downloaded for guild {Guild}", guild.DownloadedMemberCount, guild.Name);
+        };
+
         await services.GetRequiredService<InteractionHandler>().InitializeAsync();
 
         await client.LoginAsync(TokenType.Bot, Environment.GetEnvironmentVariable("DISCORD_TOKEN"));

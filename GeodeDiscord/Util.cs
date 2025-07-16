@@ -126,6 +126,32 @@ public static class Util {
         quote.messageId, quote.channelId, null, false, MessageReferenceType.Forward
     );
 
+    public static IEnumerable<Embed> QuoteToCensoredEmbeds(Quote quote) {
+        StringBuilder description = new();
+        description.AppendLine(quote.content);
+        description.AppendLine("\\- ????? in ????? by ?????");
+
+        StringBuilder footer = new();
+        if (quote.extraAttachments != 0) {
+            footer.Append(quote.extraAttachments.ToString("+0;-#"));
+            footer.Append(" attachment");
+            if (quote.extraAttachments != 1)
+                footer.Append('s');
+        }
+
+        yield return new EmbedBuilder()
+            .WithAuthor("?????")
+            .WithDescription(description.ToString())
+            .WithImageUrl(quote.images.Length > 0 ? quote.images[0] : null)
+            .WithFooter(footer.ToString())
+            .Build();
+
+        foreach (string image in quote.images.Skip(1))
+            yield return new EmbedBuilder()
+                .WithImageUrl(image)
+                .Build();
+    }
+
     public static LogEventLevel DiscordToSerilogLevel(LogSeverity x) => x switch {
         LogSeverity.Critical => LogEventLevel.Fatal,
         LogSeverity.Error => LogEventLevel.Error,
