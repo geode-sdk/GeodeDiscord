@@ -1,4 +1,5 @@
-﻿using Discord;
+﻿using System.Text;
+using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 
@@ -113,9 +114,33 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
     private async Task GetButton(string messageId) => await DeferAsync();
 
     [SlashCommand("count", "Gets the total amount of quotes."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
-    public async Task GetCount() {
-        int count = await db.quotes.CountAsync();
-        await RespondAsync($"There are **{count}** total quotes.");
+    public async Task GetCount(IUser? user = null) {
+        int count;
+        if (user is null) {
+            count = await db.quotes.CountAsync();
+            await RespondAsync($"There are **{count}** total quotes.");
+            return;
+        }
+        count = await db.quotes.CountAsync(x => x.authorId == user.Id);
+        await RespondAsync($"{user.Mention} has been quoted **{count}** times.",
+            allowedMentions: AllowedMentions.None);
+    }
+
+    [SlashCommand("leaderboard", "Shows top 10 most quoted users."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
+    public async Task GetLeaderboard() {
+        IEnumerable<string> lines = db.quotes
+            .GroupBy(x => x.authorId)
+            .Select(x => new {
+                    authorId = x.Key,
+                    quoteCount = x.Count()
+                }
+            )
+            .OrderByDescending(x => x.quoteCount)
+            .Take(10)
+            .AsEnumerable()
+            .Select((x, i) => $"{i + 1}. <@{x.authorId}> - **{x.quoteCount}** quotes");
+        await RespondAsync($"## 🏆 10 most quoted users:\n{string.Join("\n", lines)}",
+            allowedMentions: AllowedMentions.None);
     }
 
     [SlashCommand("random", "Gets a random quote."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
