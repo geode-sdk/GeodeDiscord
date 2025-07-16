@@ -122,6 +122,10 @@ public static class Util {
                 .Build();
     }
 
+    public static MessageReference QuoteToForward(Quote quote) => new(
+        quote.messageId, quote.channelId, null, false, MessageReferenceType.Forward
+    );
+
     public static LogEventLevel DiscordToSerilogLevel(LogSeverity x) => x switch {
         LogSeverity.Critical => LogEventLevel.Fatal,
         LogSeverity.Error => LogEventLevel.Error,
