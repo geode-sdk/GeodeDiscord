@@ -124,9 +124,9 @@ public partial class QuoteModule {
 
         Embed[] quoteEmbeds = Util.QuoteToEmbeds(quote).ToArray();
         await response.ModifyAsync(x => {
-            x.Content = guessId == 0 ? "### Time's up!" : quote.authorId == guessId ?
-                $"### ✅ {Context.User.Mention} guessed correctly! This quote is by <@{guessId}>:" :
-                $"### ❌ {Context.User.Mention} guessed incorrectly! This quote is not by <@{guessId}>:";
+            x.Content = guessId == 0 || interaction is null ? "### Time's up!" : quote.authorId == guessId ?
+                $"### ✅ {interaction.User.Mention} guessed correctly! This quote is by <@{guessId}>:" :
+                $"### ❌ {interaction.User.Mention} guessed incorrectly! This quote is not by <@{guessId}>:";
             x.AllowedMentions = AllowedMentions.None;
             x.Embeds = quoteEmbeds;
             ComponentBuilder component = new ComponentBuilder()
@@ -136,7 +136,7 @@ public partial class QuoteModule {
             x.Components = component.Build();
         });
 
-        if (guessId == 0)
+        if (guessId == 0 || interaction is null)
             return;
 
         SocketInteraction? fixNamesInter = await InteractionUtility.WaitForInteractionAsync(
@@ -154,8 +154,8 @@ public partial class QuoteModule {
                 await GetUserNameAsync(quote.authorId) ?? quote.authorId.ToString();
             await response.ModifyAsync(x => {
                 x.Content = quote.authorId == guessId ?
-                    $"### ✅ {Context.User.Mention} guessed correctly! This quote is by `{guessName}`:" :
-                    $"### ❌ {Context.User.Mention} guessed incorrectly! This quote is by `{correctName}`, not `{guessName}`:";
+                    $"### ✅ {interaction.User.Mention} guessed correctly! This quote is by `{guessName}`:" :
+                    $"### ❌ {interaction.User.Mention} guessed incorrectly! This quote is by `{correctName}`, not `{guessName}`:";
                 x.AllowedMentions = AllowedMentions.None;
                 x.Embeds = quoteEmbeds;
                 x.Components = new ComponentBuilder()
