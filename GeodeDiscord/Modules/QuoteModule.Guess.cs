@@ -125,8 +125,8 @@ public partial class QuoteModule {
         }
         await RespondAsync(
             text: quote.authorId == ulong.Parse(guessId) ?
-                $"### ✅ Correct! This quote is by <@{guessId}>:" :
-                $"### ❌ Incorrect! This quote is not by <@{guessId}>:",
+                $"### ✅ {Context.User.Mention} guessed correctly! This quote is by <@{guessId}>:" :
+                $"### ❌ {Context.User.Mention} guessed incorrectly! This quote is not by <@{guessId}>:",
             allowedMentions: AllowedMentions.None,
             embeds: Util.QuoteToEmbeds(quote).ToArray(),
             components: new ComponentBuilder()
