@@ -16,7 +16,7 @@ namespace GeodeDiscord.Modules;
 
 [Group("quote", "Quote other people's messages."), UsedImplicitly]
 public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
-    private static event Action<Quote, bool>? onUpdate;
+    private static event Func<Quote, bool, Task>? onUpdate;
 
     [MessageCommand("Add quote"), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task Add(IMessage message) {
@@ -78,7 +78,7 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         await ContinueAddQuote(quoteMessage);
         return;
 
-        async void OnUpdate(Quote quote, bool exists) {
+        async Task OnUpdate(Quote quote, bool exists) {
             // OnUpdate can be called from outside here even when multiple interaction is current,
             // causing all interactions to get updated with the same message
             if (quote.messageId != quoteMessage)
