@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Globalization;
+using System.Text;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -131,16 +132,46 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         await DeferAsync();
         IEnumerable<string> lines = db.quotes
             .GroupBy(x => x.authorId)
-            .Select(x => new {
-                authorId = x.Key,
-                quoteCount = x.Count()
-            })
+            .Select(x => new { authorId = x.Key, quoteCount = x.Count() })
             .OrderByDescending(x => x.quoteCount)
             .Take(10)
             .AsEnumerable()
             .Select((x, i) => $"{i + 1}. <@{x.authorId}> - **{x.quoteCount}** quotes");
-        await FollowupAsync($"## 🏆 10 most quoted users:\n{string.Join("\n", lines)}",
-            allowedMentions: AllowedMentions.None);
+        await FollowupAsync(
+            text: $"## 🏆 10 most quoted users:\n{string.Join("\n", lines)}",
+            allowedMentions: AllowedMentions.None
+        );
+    }
+
+    [SlashCommand("stats", "Shows some quote related stats."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
+    public async Task GetStats(IUser? user = null) {
+        user ??= Context.User;
+
+        StringBuilder stats = new();
+        stats.AppendLine($"## {user.Mention}'s stats:");
+
+        int quotedCount = await db.quotes.CountAsync(x => x.authorId == user.Id);
+        GuessStats? guess = await db.guessStats.FindAsync(user.Id);
+
+        if (quotedCount > 0)
+            stats.AppendLine($"- Has been quoted **{quotedCount}** times.");
+        if (guess is not null && guess.total > 0) {
+            stats.AppendLine($"- Has made **{guess.total}** total quote guesses...");
+            if (guess.correct > 0) {
+                stats.AppendFormat(
+                    CultureInfo.InvariantCulture,
+                    $"- ...**{guess.correct}** (**{(float)guess.correct / guess.total * 100.0f:F1}%**) of which were correct."
+                );
+                stats.AppendLine();
+            }
+            else {
+                stats.AppendLine("- ...none of which were correct.");
+            }
+            if (guess.maxStreak != 1)
+                stats.AppendLine($"- Achieved a maximum streak **{guess.maxStreak}** correct guesses in a row.");
+        }
+
+        await RespondAsync(stats.ToString(), allowedMentions: AllowedMentions.None);
     }
 
     [SlashCommand("random", "Gets a random quote."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
