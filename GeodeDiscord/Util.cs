@@ -9,11 +9,11 @@ using Serilog.Events;
 namespace GeodeDiscord;
 
 public static class Util {
-    private static List<string> GetMessageImages(IMessage message) => message.Attachments
+    private static string[] GetMessageImages(IMessage message) => message.Attachments
         .Where(att => !att.IsSpoiler() && att.ContentType.StartsWith("image/", StringComparison.Ordinal))
         .Take(10)
         .Select(att => att.Url)
-        .ToList();
+        .ToArray();
 
     private static async Task<IMessage?> GetReplyAsync(IMessage message) {
         if (message.Channel is null || message.Reference is null ||
@@ -49,8 +49,8 @@ public static class Util {
                 continue;
             }
 
-            List<string> images = GetMessageImages(message);
-            int extraAttachments = message.Attachments.Count - images.Count;
+            string[] images = GetMessageImages(message);
+            int extraAttachments = message.Attachments.Count - images.Length;
             ulong replyAuthorId = (await GetReplyAsync(message))?.Author.Id ?? 0;
             return new Quote {
                 name = name,
@@ -62,7 +62,7 @@ public static class Util {
                 authorId = message.Author.Id,
                 replyAuthorId = replyAuthorId,
                 jumpUrl = message.Channel is null ? null : message.GetJumpUrl(),
-                images = string.Join('|', images),
+                images = images,
                 extraAttachments = extraAttachments,
                 content = message.Content
             };
@@ -100,8 +100,6 @@ public static class Util {
             description.Append(":f>");
         }
 
-        string[] images = quote.images.Split('|');
-
         StringBuilder footer = new();
         if (quote.extraAttachments != 0) {
             footer.Append(quote.extraAttachments.ToString("+0;-#"));
@@ -113,12 +111,12 @@ public static class Util {
         yield return new EmbedBuilder()
             .WithAuthor(quote.name)
             .WithDescription(description.ToString())
-            .WithImageUrl(images.Length > 0 ? images[0] : null)
+            .WithImageUrl(quote.images.Length > 0 ? quote.images[0] : null)
             .WithTimestamp(quote.createdAt)
             .WithFooter(footer.ToString())
             .Build();
 
-        foreach (string image in images.Skip(1))
+        foreach (string image in quote.images.Skip(1))
             yield return new EmbedBuilder()
                 .WithImageUrl(image)
                 .Build();
