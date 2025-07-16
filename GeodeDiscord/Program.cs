@@ -76,8 +76,9 @@ public static class Program {
             Log.Information("Caching all users");
             await client.DownloadUsersAsync(client.Guilds);
         };
-        client.GuildMembersDownloaded += async guild => {
+        client.GuildMembersDownloaded += guild => {
             Log.Information("{Count} members downloaded for guild {Guild}", guild.DownloadedMemberCount, guild.Name);
+            return Task.CompletedTask;
         };
 
         await services.GetRequiredService<InteractionHandler>().InitializeAsync();
