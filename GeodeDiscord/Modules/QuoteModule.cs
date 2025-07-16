@@ -173,7 +173,7 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
                 stats.AppendLine($"- Achieved a maximum streak **{guess.maxStreak}** correct guesses in a row.");
         }
 
-        await RespondAsync(stats.ToString(), allowedMentions: AllowedMentions.None);
+        await FollowupAsync(stats.ToString(), allowedMentions: AllowedMentions.None);
     }
 
     [SlashCommand("random", "Gets a random quote."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
