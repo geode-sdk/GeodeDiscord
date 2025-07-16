@@ -131,10 +131,9 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         IEnumerable<string> lines = db.quotes
             .GroupBy(x => x.authorId)
             .Select(x => new {
-                    authorId = x.Key,
-                    quoteCount = x.Count()
-                }
-            )
+                authorId = x.Key,
+                quoteCount = x.Count()
+            })
             .OrderByDescending(x => x.quoteCount)
             .Take(10)
             .AsEnumerable()
