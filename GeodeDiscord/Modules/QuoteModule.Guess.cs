@@ -154,8 +154,8 @@ public partial class QuoteModule {
                 await GetUserNameAsync(quote.authorId) ?? quote.authorId.ToString();
             await response.ModifyAsync(x => {
                 x.Content = quote.authorId == guessId ?
-                    $"### ✅ {Context.User.Mention} guessed correctly! This quote is by **{guessName}**:" :
-                    $"### ❌ {Context.User.Mention} guessed incorrectly! This quote is by **{correctName}**, not *{guessName}*:";
+                    $"### ✅ {Context.User.Mention} guessed correctly! This quote is by `{guessName}`:" :
+                    $"### ❌ {Context.User.Mention} guessed incorrectly! This quote is by `{correctName}`, not `{guessName}`:";
                 x.AllowedMentions = AllowedMentions.None;
                 x.Embeds = quoteEmbeds;
                 x.Components = new ComponentBuilder()
