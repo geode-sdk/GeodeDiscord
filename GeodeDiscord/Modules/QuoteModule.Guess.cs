@@ -245,7 +245,7 @@ public partial class QuoteModule {
             return;
         }
 
-        if (!ulong.TryParse(authorMatch.ValueSpan, out ulong authorId)) {
+        if (!ulong.TryParse(authorMatch.Groups[1].ValueSpan, out ulong authorId)) {
             await RespondAsync("❌ Failed to fix names: unable to parse quote author ID!", ephemeral: true);
             return;
         }
