@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -219,37 +220,57 @@ public partial class QuoteModule {
                 component.WithButton("Fix names", "quote/guess-fix-names", ButtonStyle.Secondary, new Emoji("🔧"));
             x.Components = component.Build();
         });
-
-        SocketInteraction? fixNamesInter = await InteractionUtility.WaitForInteractionAsync(
-            Context.Client,
-            TimeSpan.FromSeconds(20d),
-            inter =>
-                inter.Type == InteractionType.MessageComponent &&
-                inter is SocketMessageComponent msg &&
-                msg.Message.Id == response.Id &&
-                msg.Data.CustomId == "quote/guess-fix-names"
-        );
-        if (fixNamesInter is not null) {
-            string correctName = await GetUserNameAsync(quote.authorId) ?? quote.authorId.ToString();
-            string guessName = result != GuessResult.Incorrect ? correctName :
-                await GetUserNameAsync(guessId) ?? guessId.ToString();
-            await response.ModifyAsync(x => {
-                x.Content = result switch {
-                    GuessResult.Incorrect => $"### {resultText} This quote is by `{correctName}`, not `{guessName}`.\n{statsText}",
-                    _ => $"### {resultText} This quote is by `{correctName}`.\n{statsText}"
-                };
-                x.AllowedMentions = AllowedMentions.None;
-                x.Embeds = quoteEmbeds;
-                x.Components = new ComponentBuilder()
-                    .WithButton("Guess again!", "quote/guess-again", ButtonStyle.Primary, new Emoji("❓"))
-                    .Build();
-            });
-        }
     }
 
     [ComponentInteraction("guess-button:*"), UsedImplicitly]
     private async Task GuessButton(string guessId) => await DeferAsync();
 
     [ComponentInteraction("guess-fix-names"), UsedImplicitly]
-    private async Task GuessFixNames() => await DeferAsync();
+    private async Task GuessFixNames() {
+        if (Context.Interaction is not SocketMessageComponent interaction) {
+            await RespondAsync("❌ Failed to fix names: interaction is not from a message..?", ephemeral: true);
+            return;
+        }
+
+        SocketUserMessage msg = interaction.Message;
+        Embed? embed = msg.Embeds.FirstOrDefault();
+        if (embed?.Author?.Name is null) {
+            await RespondAsync("❌ Failed to fix names: unable to detect quote!", ephemeral: true);
+            return;
+        }
+
+        Quote? quote = await db.quotes.FirstOrDefaultAsync(x => x.name == embed.Author.Value.Name);
+        if (quote is null) {
+            await RespondAsync("❌ Failed to fix names: unable to find quote!", ephemeral: true);
+            return;
+        }
+
+        Match match = ShowedIdRegex().Match(msg.Content);
+        if (!match.Groups[1].Success) {
+            await RespondAsync("❌ Failed to fix names: unable to detect showed id!", ephemeral: true);
+            return;
+        }
+
+        if (!ulong.TryParse(match.Groups[1].ValueSpan, out ulong showedId)) {
+            await RespondAsync("❌ Failed to fix names: unable to parse showed id!", ephemeral: true);
+            return;
+        }
+
+        string correctName = await GetUserNameAsync(quote.authorId) ?? quote.authorId.ToString();
+        string replacedName = quote.authorId == showedId ?
+            $"by `{correctName}`" :
+            $"by `{correctName}`, not {await GetUserNameAsync(showedId) ?? showedId.ToString()}";
+
+        await msg.ModifyAsync(x => {
+            x.Content = $"{msg.Content[..match.Index]}{replacedName}{msg.Content[(match.Index + match.Length)..]}";
+            x.AllowedMentions = AllowedMentions.None;
+            x.Embeds = msg.Embeds.ToArray();
+            x.Components = new ComponentBuilder()
+                .WithButton("Guess again!", "quote/guess-again", ButtonStyle.Primary, new Emoji("❓"))
+                .Build();
+        });
+    }
+
+    [GeneratedRegex("(?:not )?by <@(.*)>")]
+    private static partial Regex ShowedIdRegex();
 }
