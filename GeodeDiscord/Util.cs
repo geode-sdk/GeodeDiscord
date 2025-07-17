@@ -36,10 +36,10 @@ public static class Util {
         return refMessage ?? null;
     }
 
-    public static Task<Quote> MessageToQuote(ulong quoterId, string name, IMessage message, Quote? original = null) =>
-        MessageToQuote(quoterId, name, message, DateTimeOffset.Now, original);
+    public static Task<Quote> MessageToQuote(ulong quoterId, int id, IMessage message, Quote? original = null) =>
+        MessageToQuote(quoterId, id, message, DateTimeOffset.Now, original);
 
-    public static async Task<Quote> MessageToQuote(ulong quoterId, string name, IMessage message,
+    public static async Task<Quote> MessageToQuote(ulong quoterId, int id, IMessage message,
         DateTimeOffset timestamp, Quote? original = null) {
         while (true) {
             // if we're just quoting a forwarded message, quote the forwarded message instead
@@ -53,7 +53,8 @@ public static class Util {
             int extraAttachments = message.Attachments.Count - images.Length;
             ulong replyAuthorId = (await GetReplyAsync(message))?.Author.Id ?? 0;
             return new Quote {
-                name = name,
+                id = id,
+                name = original?.name ?? "",
                 messageId = message.Id,
                 channelId = message.Channel?.Id ?? 0,
                 createdAt = original?.createdAt ?? timestamp,
@@ -109,7 +110,7 @@ public static class Util {
         }
 
         yield return new EmbedBuilder()
-            .WithAuthor(quote.name)
+            .WithAuthor(quote.GetFullName())
             .WithDescription(description.ToString())
             .WithImageUrl(quote.images.Length > 0 ? quote.images[0] : null)
             .WithTimestamp(quote.createdAt)

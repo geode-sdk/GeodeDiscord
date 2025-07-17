@@ -239,25 +239,30 @@ public partial class QuoteModule {
             return;
         }
 
-        Quote? quote = await db.quotes.FirstOrDefaultAsync(x => x.name == embed.Author.Value.Name);
-        if (quote is null) {
-            await RespondAsync("❌ Failed to fix names: unable to find quote!", ephemeral: true);
+        Match? authorMatch = AuthorIdRegex().Matches(embed.Description).LastOrDefault();
+        if (authorMatch is null) {
+            await RespondAsync("❌ Failed to fix names: unable to detect quote author!", ephemeral: true);
+            return;
+        }
+
+        if (!ulong.TryParse(authorMatch.ValueSpan, out ulong authorId)) {
+            await RespondAsync("❌ Failed to fix names: unable to parse quote author ID!", ephemeral: true);
             return;
         }
 
         Match match = ShowedIdRegex().Match(msg.Content);
         if (!match.Groups[1].Success) {
-            await RespondAsync("❌ Failed to fix names: unable to detect showed id!", ephemeral: true);
+            await RespondAsync("❌ Failed to fix names: unable to detect showed ID!", ephemeral: true);
             return;
         }
 
         if (!ulong.TryParse(match.Groups[1].ValueSpan, out ulong showedId)) {
-            await RespondAsync("❌ Failed to fix names: unable to parse showed id!", ephemeral: true);
+            await RespondAsync("❌ Failed to fix names: unable to parse showed ID!", ephemeral: true);
             return;
         }
 
-        string correctName = await GetUserNameAsync(quote.authorId) ?? quote.authorId.ToString();
-        string replacedName = quote.authorId == showedId ?
+        string correctName = await GetUserNameAsync(authorId) ?? authorId.ToString();
+        string replacedName = authorId == showedId ?
             $"by `{correctName}`" :
             $"by `{correctName}`, not `{await GetUserNameAsync(showedId) ?? showedId.ToString()}`";
 
@@ -270,6 +275,9 @@ public partial class QuoteModule {
                 .Build();
         });
     }
+
+    [GeneratedRegex(@"\\- <@(.*)>")]
+    private static partial Regex AuthorIdRegex();
 
     [GeneratedRegex("(?:not )?by <@(.*)>")]
     private static partial Regex ShowedIdRegex();

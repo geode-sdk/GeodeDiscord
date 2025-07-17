@@ -5,12 +5,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GeodeDiscord.Database.Entities;
 
-[Index(nameof(name), IsUnique = true), Index(nameof(authorId))]
+[Index(nameof(id), IsUnique = true), Index(nameof(name)), Index(nameof(authorId))]
 public record Quote {
     // basic
     [Key, DatabaseGenerated(DatabaseGeneratedOption.None)]
     public required ulong messageId { get; init; }
-    public required string name { get; set; }
+    [DatabaseGenerated(DatabaseGeneratedOption.None)]
+    public required int id { get; init; }
+    public string name { get; set; } = "";
     public required ulong channelId { get; init; }
     public required DateTimeOffset createdAt { get; init; }
     public required DateTimeOffset lastEditedAt { get; init; }
@@ -27,4 +29,6 @@ public record Quote {
 
     // content
     public required string content { get; init; }
+
+    public string GetFullName() => string.IsNullOrWhiteSpace(name) ? id.ToString() : $"{id}: {name}";
 }

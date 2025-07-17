@@ -33,11 +33,9 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
             return;
         }
 
-        int max = !await db.quotes.AnyAsync() ? 0 : await db.Database
-            .SqlQueryRaw<int>("SELECT max(CAST(name AS INTEGER)) as Value FROM quotes")
-            .SingleAsync();
+        int max = !await db.quotes.AnyAsync() ? 0 : await db.quotes.Select(x => x.id).MaxAsync();
 
-        Quote quote = await Util.MessageToQuote(Context.User.Id, (max + 1).ToString(), message);
+        Quote quote = await Util.MessageToQuote(Context.User.Id, max + 1, message);
         db.Add(quote);
 
         try { await db.SaveChangesAsync(); }
@@ -97,8 +95,8 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         }
     }
     private static string GetAddMessageContent(Quote quote, bool exists, bool show) =>
-        exists ? show ? "Quote saved!" : $"Quote {quote.jumpUrl} saved as **{quote.name}**!" :
-            $"~~Quote {quote.jumpUrl} saved as *{quote.name}*!~~";
+        exists ? show ? "Quote saved!" : $"Quote {quote.jumpUrl} saved as **{quote.GetFullName()}**!" :
+            $"~~Quote {quote.jumpUrl} saved as *{quote.GetFullName()}*!~~";
     private static Embed[] GetAddMessageEmbeds(Quote quote, bool exists, bool show) =>
         show && exists ? Util.QuoteToEmbeds(quote).ToArray() : [];
     private static MessageComponent GetAddMessageComponents(Quote quote, bool exists, bool show) =>
@@ -193,9 +191,9 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
             await ReplyAsync(messageReference: Util.QuoteToForward(quote));
     }
 
-    [SlashCommand("get", "Gets a quote with the specified name."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
-    public async Task Get([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
-        Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.name == name);
+    [SlashCommand("get", "Gets a quote with the specified ID."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
+    public async Task Get([Autocomplete(typeof(QuoteAutocompleteHandler))] int id) {
+        Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
         if (quote is null) {
             await RespondAsync("❌ Quote not found!", ephemeral: true);
             return;
@@ -215,15 +213,16 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
             try {
                 return Task.FromResult(AutocompletionResult.FromSuccess(db.quotes
                     .Where(q =>
+                        q.id.ToString() == value ||
                         q.messageId.ToString() == value ||
                         q.authorId.ToString() == value ||
-                        EF.Functions.Like(q.name, $"%{value}%") ||
+                        q.name != "" && EF.Functions.Like(q.name, $"%{value}%") ||
                         EF.Functions.Like(q.content, $"%{value}%"))
                     .Take(25)
                     .AsEnumerable()
                     .Select(q => {
-                        string name = $"{q.name}: {q.content}";
-                        return new AutocompleteResult(name.Length <= 100 ? name : $"{name[..97]}...", q.name);
+                        string name = $"{q.GetFullName()}: {q.content}";
+                        return new AutocompleteResult(name.Length <= 100 ? name : $"{name[..97]}...", q.id);
                     })));
             }
             catch (Exception ex) {

@@ -48,8 +48,8 @@ public partial class QuoteModule {
             await RenameQuote(await db.quotes.FindAsync(ulong.Parse(messageId)), modal.newName, false);
 
         [SlashCommand("rename", "Renames a quote with the specified name."), UsedImplicitly]
-        public async Task Rename([Autocomplete(typeof(QuoteAutocompleteHandler))] string oldName, string newName) =>
-            await RenameQuote(await db.quotes.FirstOrDefaultAsync(q => q.name == oldName), newName, true);
+        public async Task Rename([Autocomplete(typeof(QuoteAutocompleteHandler))] int id, string newName) =>
+            await RenameQuote(await db.quotes.FirstOrDefaultAsync(q => q.id == id), newName, true);
         private async Task RenameQuote(Quote? quote, string newName, bool shouldRespond) {
             if (quote is null) {
                 await RespondAsync("❌ Quote not found!", ephemeral: true);
@@ -57,12 +57,8 @@ public partial class QuoteModule {
             }
             if (!await CheckSensitive(quote))
                 return;
-            if (await db.quotes.AnyAsync(q => q.name == newName)) {
-                await RespondAsync($"❌ Quote **{newName}** already exists!", ephemeral: true);
-                return;
-            }
-            string oldName = quote.name;
-            quote.name = newName;
+            string oldName = quote.GetFullName();
+            quote.name = newName.Trim();
             try { await db.SaveChangesAsync(); }
             catch (Exception ex) {
                 Log.Error(ex, "[quote/sensitive] Failed to rename quote");
@@ -70,9 +66,9 @@ public partial class QuoteModule {
                 return;
             }
             Log.Information("[quote/sensitive] {User} renamed quote {OldName} to {NewName}", Context.User.Id, oldName,
-                quote.name);
+                quote.GetFullName());
             if (shouldRespond)
-                await RespondAsync($"Quote *{oldName}* renamed to **{quote.name}**!");
+                await RespondAsync($"Quote *{oldName}* renamed to **{quote.GetFullName()}**!");
             else
                 await DeferAsync();
             onUpdate?.Invoke(quote, true);
@@ -82,8 +78,8 @@ public partial class QuoteModule {
         public async Task DeleteButton(string messageId) =>
             await DeleteQuote(await db.quotes.FindAsync(ulong.Parse(messageId)), false);
         [SlashCommand("delete", "Deletes a quote with the specified name."), UsedImplicitly]
-        public async Task Delete([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) =>
-            await DeleteQuote(await db.quotes.FirstOrDefaultAsync(q => q.name == name), true);
+        public async Task Delete([Autocomplete(typeof(QuoteAutocompleteHandler))] int id) =>
+            await DeleteQuote(await db.quotes.FirstOrDefaultAsync(q => q.id == id), true);
         private async Task DeleteQuote(Quote? quote, bool shouldRespond) {
             if (quote is null) {
                 await RespondAsync("❌ Quote not found!", ephemeral: true);
@@ -98,17 +94,17 @@ public partial class QuoteModule {
                 await RespondAsync("❌ Failed to delete quote!", ephemeral: true);
                 return;
             }
-            Log.Information("[quote/sensitive] {User} deleted quote {Name}", Context.User.Id, quote.name);
+            Log.Information("[quote/sensitive] {User} deleted quote {Name}", Context.User.Id, quote.GetFullName());
             if (shouldRespond)
-                await RespondAsync($"Deleted quote *{quote.name}*!");
+                await RespondAsync($"Deleted quote *{quote.GetFullName()}*!");
             else
                 await DeferAsync();
             onUpdate?.Invoke(quote, false);
         }
 
         [SlashCommand("update", "Updates a quote by re-fetching the message."), UsedImplicitly]
-        public async Task Update([Autocomplete(typeof(QuoteAutocompleteHandler))] string name) {
-            Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.name == name);
+        public async Task Update([Autocomplete(typeof(QuoteAutocompleteHandler))] int id) {
+            Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
             if (quote is null) {
                 await RespondAsync("❌ Quote not found!", ephemeral: true);
                 return;
@@ -136,7 +132,7 @@ public partial class QuoteModule {
             }
 
             db.Remove(quote);
-            db.Add(await Util.MessageToQuote(quote.quoterId, quote.name, message, quote));
+            db.Add(await Util.MessageToQuote(quote.quoterId, quote.id, message, quote));
 
             try { await db.SaveChangesAsync(); }
             catch (Exception ex) {
@@ -144,8 +140,8 @@ public partial class QuoteModule {
                 await RespondAsync("❌ Failed to update quote!", ephemeral: true);
                 return;
             }
-            Log.Information("[quote/sensitive] {User} updated quote {Name}", Context.User.Id, quote.name);
-            await RespondAsync($"Updated quote **{quote.name}**!");
+            Log.Information("[quote/sensitive] {User} updated quote {Name}", Context.User.Id, quote.GetFullName());
+            await RespondAsync($"Updated quote **{quote.GetFullName()}**!");
         }
     }
 }

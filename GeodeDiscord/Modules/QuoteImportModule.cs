@@ -21,9 +21,9 @@ namespace GeodeDiscord.Modules;
 public partial class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
     [SlashCommand("manual-quoter", "Sets the quoter of a quote."), CommandContextType(InteractionContextType.Guild),
      UsedImplicitly]
-    public async Task ManualQuoter([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] string name,
+    public async Task ManualQuoter([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] int id,
         IUser newQuoter) {
-        Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.name == name);
+        Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
         if (quote is null) {
             await RespondAsync("❌ Quote not found!", ephemeral: true);
             return;
@@ -36,13 +36,13 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             await RespondAsync("❌ Failed to change quote!", ephemeral: true);
             return;
         }
-        await RespondAsync($"Quote **{quote.name}** quoter changed to `{newQuoter.Id}`!");
+        await RespondAsync($"Quote **{quote.GetFullName()}** quoter changed to `{newQuoter.Id}`!");
     }
     [SlashCommand("manual-author", "Sets the author of a quote."), CommandContextType(InteractionContextType.Guild),
      UsedImplicitly]
-    public async Task ManualAuthor([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] string name,
+    public async Task ManualAuthor([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] int id,
         IUser newAuthor) {
-        Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.name == name);
+        Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
         if (quote is null) {
             await RespondAsync("❌ Quote not found!", ephemeral: true);
             return;
@@ -55,7 +55,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             await RespondAsync("❌ Failed to change quote!", ephemeral: true);
             return;
         }
-        await RespondAsync($"Quote **{quote.name}** author changed to `{newAuthor.Id}`!");
+        await RespondAsync($"Quote **{quote.GetFullName()}** author changed to `{newAuthor.Id}`!");
     }
 
     private readonly record struct UberBotQuote
@@ -120,7 +120,12 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 prop.Content = $"Imported {importedQuotes} quotes from {attachment.Filename}.");
         }
         private async Task<bool> ImportSingle(UberBotQuote oldQuote) {
-            (string id, string nick, string channelName, string messageIdStr, string text, long time) = oldQuote;
+            (string idStr, string nick, string channelName, string messageIdStr, string text, long time) = oldQuote;
+            if (!int.TryParse(idStr, out int id)) {
+                Log.Warning("[quote-import] Failed to import quote {Id}: invalid ID", idStr);
+                await FollowupAsync($"⚠️ Failed to import quote {idStr}! (invalid ID)");
+                return false;
+            }
             if (!ulong.TryParse(messageIdStr, out ulong messageId)) {
                 Log.Warning("[quote-import] Failed to import quote {Id}: invalid message ID", id);
                 await FollowupAsync($"⚠️ Failed to import quote {id}! (invalid message ID)");
@@ -181,7 +186,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 return false;
             }
         }
-        private async Task Infer(string nick, string id, ulong messageId, DateTimeOffset timestamp,
+        private async Task Infer(string nick, int id, ulong messageId, DateTimeOffset timestamp,
             string channelName, string text) {
             RestGuildUser? user = await InferUser("author", nick, id);
 
@@ -189,7 +194,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             await FollowupAsync($"⚠️ Quote {id} imported with potentially missing data!");
 
             await AddQuote(new Quote {
-                name = id,
+                id = id,
                 messageId = messageId,
                 channelId = 0,
                 createdAt = timestamp,
@@ -206,7 +211,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 content = text
             });
         }
-        private async Task<RestGuildUser?> InferUser(string who, string nick, string id) {
+        private async Task<RestGuildUser?> InferUser(string who, string nick, int id) {
             RestGuildUser? user;
             try {
                 string searchNick = nick.ToLowerInvariant();
@@ -232,7 +237,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             }
             return user;
         }
-        private async Task<ulong> InferUserId(string who, string text, string id) {
+        private async Task<ulong> InferUserId(string who, string text, int id) {
             ulong user = 0;
             try {
                 if (text.StartsWith("<@", StringComparison.Ordinal) && text.EndsWith('>') &&
@@ -254,7 +259,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             }
             return user;
         }
-        private async Task<Quote> InferManual(Quote quote, string id, string nick) {
+        private async Task<Quote> InferManual(Quote quote, int id, string nick) {
             Match quoteMatch = QuoteAddRegex().Match(quote.content);
             if (!quoteMatch.Success)
                 return quote;
@@ -272,7 +277,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
 
         private async Task AddQuote(Quote quote) {
             // override existing quote
-            if (await db.quotes.FirstOrDefaultAsync(q => q.name == quote.name) is { } oldQuote)
+            if (await db.quotes.FirstOrDefaultAsync(q => q.id == quote.id) is { } oldQuote)
                 db.Remove(oldQuote);
             db.Add(quote);
         }
