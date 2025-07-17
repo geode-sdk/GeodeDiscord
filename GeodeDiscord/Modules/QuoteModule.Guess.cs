@@ -240,7 +240,7 @@ public partial class QuoteModule {
         }
 
         Match? authorMatch = AuthorIdRegex().Matches(embed.Description).LastOrDefault();
-        if (authorMatch is null) {
+        if (authorMatch is null || !authorMatch.Success || !authorMatch.Groups[1].Success) {
             await RespondAsync("❌ Failed to fix names: unable to detect quote author!", ephemeral: true);
             return;
         }
@@ -251,7 +251,7 @@ public partial class QuoteModule {
         }
 
         Match match = ShowedIdRegex().Match(msg.Content);
-        if (!match.Groups[1].Success) {
+        if (!match.Success || !match.Groups[1].Success) {
             await RespondAsync("❌ Failed to fix names: unable to detect showed ID!", ephemeral: true);
             return;
         }
@@ -276,9 +276,9 @@ public partial class QuoteModule {
         });
     }
 
-    [GeneratedRegex(@"\\- <@(.*)>")]
+    [GeneratedRegex(@"\\- <@(.*?)>")]
     private static partial Regex AuthorIdRegex();
 
-    [GeneratedRegex("(?:not )?by <@(.*)>")]
+    [GeneratedRegex("(?:not )?by <@(.*?)>")]
     private static partial Regex ShowedIdRegex();
 }
