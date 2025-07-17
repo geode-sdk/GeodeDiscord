@@ -129,6 +129,7 @@ public static class Util {
     public static IEnumerable<Embed> QuoteToCensoredEmbeds(Quote quote) {
         StringBuilder description = new();
         description.AppendLine(quote.content);
+        description.AppendLine();
         description.AppendLine("\\- ????? in ????? by ?????");
 
         StringBuilder footer = new();
