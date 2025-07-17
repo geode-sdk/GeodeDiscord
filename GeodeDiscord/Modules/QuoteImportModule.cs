@@ -19,6 +19,25 @@ namespace GeodeDiscord.Modules;
 
 [Group("quote-import", "Import quotes."), DefaultMemberPermissions(GuildPermission.Administrator), CommandContextType(InteractionContextType.Guild)]
 public partial class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
+    [SlashCommand("manual-id", "Sets the id of a quote."), CommandContextType(InteractionContextType.Guild),
+     UsedImplicitly]
+    public async Task ManualId([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] int id, int newId) {
+        Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
+        if (quote is null) {
+            await RespondAsync("❌ Quote not found!", ephemeral: true);
+            return;
+        }
+        db.Remove(quote);
+        db.Add(quote with { id = newId });
+        try { await db.SaveChangesAsync(); }
+        catch (Exception ex) {
+            Log.Error(ex, "Failed to change quote");
+            await RespondAsync("❌ Failed to change quote!", ephemeral: true);
+            return;
+        }
+        await RespondAsync($"Quote **{id}** ID changed to `{newId}`!");
+    }
+
     [SlashCommand("manual-quoter", "Sets the quoter of a quote."), CommandContextType(InteractionContextType.Guild),
      UsedImplicitly]
     public async Task ManualQuoter([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] int id,
@@ -38,6 +57,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
         }
         await RespondAsync($"Quote **{quote.GetFullName()}** quoter changed to `{newQuoter.Id}`!");
     }
+
     [SlashCommand("manual-author", "Sets the author of a quote."), CommandContextType(InteractionContextType.Guild),
      UsedImplicitly]
     public async Task ManualAuthor([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] int id,
