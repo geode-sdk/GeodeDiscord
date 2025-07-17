@@ -259,7 +259,7 @@ public partial class QuoteModule {
         string correctName = await GetUserNameAsync(quote.authorId) ?? quote.authorId.ToString();
         string replacedName = quote.authorId == showedId ?
             $"by `{correctName}`" :
-            $"by `{correctName}`, not {await GetUserNameAsync(showedId) ?? showedId.ToString()}";
+            $"by `{correctName}`, not `{await GetUserNameAsync(showedId) ?? showedId.ToString()}`";
 
         await msg.ModifyAsync(x => {
             x.Content = $"{msg.Content[..match.Index]}{replacedName}{msg.Content[(match.Index + match.Length)..]}";
