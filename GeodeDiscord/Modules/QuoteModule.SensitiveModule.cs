@@ -47,9 +47,14 @@ public partial class QuoteModule {
         public async Task RenameModal(string messageId, RenameQuoteModal modal) =>
             await RenameQuote(await db.quotes.FindAsync(ulong.Parse(messageId)), modal.newName, false);
 
-        [SlashCommand("rename", "Renames a quote with the specified name."), UsedImplicitly]
+        [SlashCommand("rename", "Renames a quote."), UsedImplicitly]
         public async Task Rename([Autocomplete(typeof(QuoteAutocompleteHandler))] int id, string newName) =>
             await RenameQuote(await db.quotes.FirstOrDefaultAsync(q => q.id == id), newName, true);
+
+        [SlashCommand("unname", "Removes the name from a quote."), UsedImplicitly]
+        public async Task Unname([Autocomplete(typeof(QuoteAutocompleteHandler))] int id) =>
+            await RenameQuote(await db.quotes.FirstOrDefaultAsync(q => q.id == id), "", true);
+
         private async Task RenameQuote(Quote? quote, string newName, bool shouldRespond) {
             if (quote is null) {
                 await RespondAsync("❌ Quote not found!", ephemeral: true);
