@@ -163,7 +163,7 @@ public partial class QuoteModule {
             GuessResult.Timeout => "### 🕛 YOUR TAKING TOO LONG... ",
             GuessResult.Correct => "### ✅ Correct! ",
             GuessResult.Incorrect => "### ❌ Incorrect! ",
-            _ => "### ❓ ?????"
+            _ => "### ❓ ????? "
         });
         switch (result) {
             case GuessResult.Incorrect:
