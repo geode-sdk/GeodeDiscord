@@ -109,7 +109,7 @@ public partial class QuoteModule {
             );
         }
         IUserMessage response = await FollowupAsync(
-            text: "## Who said this?",
+            text: $"## {Context.User.Mention}, who said this?",
             allowedMentions: AllowedMentions.None,
             embeds: Util.QuoteToCensoredEmbeds(quote).ToArray(),
             components: components.Build()
@@ -119,6 +119,7 @@ public partial class QuoteModule {
             Context.Client,
             TimeSpan.FromSeconds(60d),
             inter =>
+                inter.User.Id == Context.User.Id &&
                 inter.Type == InteractionType.MessageComponent &&
                 inter is SocketMessageComponent msg &&
                 msg.Message.Id == response.Id &&
@@ -128,14 +129,10 @@ public partial class QuoteModule {
 
         GuessResult result = guessId == 0 || interaction is null ? GuessResult.Timeout :
             quote.authorId == guessId ? GuessResult.Correct : GuessResult.Incorrect;
-        SocketUser guesser = result switch {
-            GuessResult.Timeout => Context.User,
-            _ => interaction!.User
-        };
 
-        GuessStats? stats = await db.guessStats.FindAsync(guesser.Id);
+        GuessStats? stats = await db.guessStats.FindAsync(Context.User.Id);
         if (stats is null) {
-            stats = new GuessStats { userId = guesser.Id };
+            stats = new GuessStats { userId = Context.User.Id };
             db.Add(stats);
         }
         ulong prevStreak = stats.streak;
@@ -162,9 +159,9 @@ public partial class QuoteModule {
         }
 
         string resultText = result switch {
-            GuessResult.Timeout => $"🕛 {guesser.Mention} took too long!",
-            GuessResult.Correct => $"✅ {guesser.Mention} guessed correctly!",
-            GuessResult.Incorrect => $"❌ {guesser.Mention} guessed incorrectly!",
+            GuessResult.Timeout => $"🕛 {Context.User.Mention} took too long!",
+            GuessResult.Correct => $"✅ {Context.User.Mention} guessed correctly!",
+            GuessResult.Incorrect => $"❌ {Context.User.Mention} guessed incorrectly!",
             _ => "?????"
         };
         StringBuilder statsText = new();
@@ -223,7 +220,24 @@ public partial class QuoteModule {
     }
 
     [ComponentInteraction("guess-button:*"), UsedImplicitly]
-    private async Task GuessButton(string guessId) => await DeferAsync();
+    private async Task GuessButton(string guessId) {
+        if (Context.Interaction is not SocketMessageComponent interaction) {
+            await RespondAsync(
+                text: "❌ Failed to check interaction user: interaction is not from a message..?",
+                ephemeral: true
+            );
+            return;
+        }
+        if (interaction.User.Id == interaction.Message.InteractionMetadata.User.Id) {
+            await RespondAsync(
+                text: "❌ Only the user that started the game can make a guess!",
+                ephemeral: true
+            );
+            return;
+        }
+        // let Guess do its thing
+        await DeferAsync();
+    }
 
     [ComponentInteraction("guess-fix-names"), UsedImplicitly]
     private async Task GuessFixNames() {
