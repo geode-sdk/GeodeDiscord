@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System.Globalization;
+using System.Reflection;
 
 using Discord;
 using Discord.Interactions;
@@ -49,6 +50,8 @@ public static class Program {
     }
 
     private static async Task Main() {
+        CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Verbose()
             .Enrich.FromLogContext()

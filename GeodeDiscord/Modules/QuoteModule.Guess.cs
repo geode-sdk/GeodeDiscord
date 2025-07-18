@@ -1,5 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using Discord;
@@ -34,7 +33,7 @@ public partial class QuoteModule {
         return user?.GlobalName ?? user?.Username ?? null;
     }
 
-    private enum GuessResult { Timeout, Correct, Incorrect }
+    private enum GuessResult { Timeout, Incorrect, Correct }
 
     [SlashCommand("guess", "Try to guess who said this!"), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     [ComponentInteraction("guess-again")]
@@ -158,61 +157,50 @@ public partial class QuoteModule {
             statsSaveFail = true;
         }
 
-        StringBuilder content = new();
+        StringBuilder content = new("### ");
+
+        // emote
         content.Append(result switch {
-            GuessResult.Timeout => "### 🕛 YOUR TAKING TOO LONG... ",
-            GuessResult.Correct => "### ✅ Correct! ",
-            GuessResult.Incorrect => "### ❌ Incorrect! ",
-            _ => "### ❓ ????? "
+            GuessResult.Timeout or GuessResult.Incorrect when prevStreak > 1 => "💔 ",
+            GuessResult.Timeout => "🕛 ",
+            GuessResult.Incorrect => "❌ ",
+            GuessResult.Correct when stats.streak > 1 && newBestStreak => "🔥 ",
+            GuessResult.Correct => "✅ ",
+            _ => "❓ "
         });
+
+        // streak
+        if (stats.streak > 1) {
+            content.Append($"{stats.streak}x");
+            if (newBestStreak)
+                content.Append(", new best");
+            content.Append("! ");
+        }
+
+        // message
         switch (result) {
+            case GuessResult.Timeout:
+                content.AppendLine($"YOUR TAKING TOO LONG... {Context.User.Mention}, this quote is by <@{quote.authorId}>...");
+                break;
             case GuessResult.Incorrect:
-                content.Append("This quote is not by <@");
-                content.Append(guessId);
-                content.Append(">.");
-                content.AppendLine();
+                content.AppendLine($"Good guess, {Context.User.Mention}, but this quote is not by <@{guessId}>...");
                 break;
-            default:
-                content.Append("This quote is by <@");
-                content.Append(quote.authorId);
-                content.Append(">.");
-                content.AppendLine();
+            case GuessResult.Correct when stats.streak > 1:
+                content.AppendLine($"Keep it going, {Context.User.Mention}, this quote is by <@{quote.authorId}>!");
                 break;
-        }
-        switch (result) {
             case GuessResult.Correct:
-                if (stats.streak < 2)
-                    break;
-                content.Append("You're on a **");
-                content.Append(stats.streak);
-                content.Append("x** streak");
-                if (newBestStreak)
-                    content.Append(", this is your **new best**");
-                content.Append("! 🔥");
-                content.AppendLine();
+                content.AppendLine($"Good job, {Context.User.Mention}, this quote is by <@{quote.authorId}>!");
                 break;
             default:
-                if (prevStreak < 2)
-                    break;
-                content.Append("You broke a **");
-                content.Append(prevStreak);
-                content.Append("x** streak... 💔");
-                content.AppendLine();
+                content.AppendLine($"{Context.User.Mention}?????");
                 break;
         }
-        content.Append(Context.User.Mention);
-        content.Append(" has made **");
-        content.Append(stats.correct);
-        content.Append("**/**");
-        content.Append(stats.total);
-        content.Append("** (**");
-        content.Append(CultureInfo.InvariantCulture, $"{(float)stats.correct / stats.total * 100.0f:F1}");
-        content.Append("%**) correct guesses in total");
-        if (!(result == GuessResult.Correct && stats.streak >= 2 && newBestStreak)) {
-            content.Append(" and achieved a maximum streak of **");
-            content.Append(stats.maxStreak);
-            content.Append("** correct guesses in a row");
-        }
+
+        // stats
+        float correctPercent = (float)stats.correct / stats.total * 100.0f;
+        content.Append($"-# You have made **{stats.correct}**/**{stats.total}** (**{correctPercent:F1}%**) correct guesses in total");
+        if (!(stats.streak > 1 && newBestStreak))
+            content.Append($" with a best of **{stats.maxStreak}** correct guesses in a row");
         content.AppendLine(".");
         if (statsSaveFail) {
             // hopefully nobody ever sees this :-)
