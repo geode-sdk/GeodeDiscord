@@ -158,8 +158,7 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
             stats.AppendLine($"- Has made **{guess.total}** total quote guesses...");
             if (guess.correct > 0) {
                 float correctPercent = (float)guess.correct / guess.total * 100.0f;
-                stats.Append($"- ...**{guess.correct}** (**{correctPercent:F1}%**) of which were correct.");
-                stats.AppendLine();
+                stats.AppendLine($"- ...**{guess.correct}** (**{correctPercent:F1}%**) of which were correct.");
             }
             else {
                 stats.AppendLine("- ...none of which were correct.");
