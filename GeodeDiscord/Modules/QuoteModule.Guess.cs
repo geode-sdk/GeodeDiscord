@@ -158,57 +158,68 @@ public partial class QuoteModule {
             statsSaveFail = true;
         }
 
-        string resultText = result switch {
-            GuessResult.Timeout => $"🕛 {Context.User.Mention} took too long!",
-            GuessResult.Correct => $"✅ {Context.User.Mention} guessed correctly!",
-            GuessResult.Incorrect => $"❌ {Context.User.Mention} guessed incorrectly!",
-            _ => "?????"
-        };
-        StringBuilder statsText = new();
+        StringBuilder content = new();
+        content.Append(result switch {
+            GuessResult.Timeout => "### 🕛 YOUR TAKING TOO LONG...",
+            GuessResult.Correct => "### ✅ Correct!",
+            GuessResult.Incorrect => "### ❌ Incorrect!",
+            _ => "### ❓ ?????"
+        });
         switch (result) {
-            case GuessResult.Correct:
-                if (stats.streak > 1) {
-                    statsText.Append("They're on a **");
-                    statsText.Append(stats.streak);
-                    statsText.Append("x** streak");
-                    if (newBestStreak)
-                        statsText.Append(", **new best**");
-                    statsText.Append("! 🔥");
-                    statsText.AppendLine();
-                }
+            case GuessResult.Incorrect:
+                content.Append("This quote is not by <@");
+                content.Append(guessId);
+                content.Append(">.");
+                content.AppendLine();
                 break;
             default:
-                if (prevStreak > 1) {
-                    statsText.Append("They broke a **");
-                    statsText.Append(prevStreak);
-                    statsText.Append("x** streak... 💔");
-                    statsText.AppendLine();
-                }
+                content.Append("This quote is by <@");
+                content.Append(quote.authorId);
+                content.Append(">.");
+                content.AppendLine();
                 break;
         }
-        statsText.Append("**");
-        statsText.Append(stats.correct);
-        statsText.Append("**/**");
-        statsText.Append(stats.total);
-        statsText.Append("** correct guesses total (**");
-        statsText.Append(CultureInfo.InvariantCulture, $"{(float)stats.correct / stats.total * 100.0f:F1}");
-        statsText.Append("%**).");
-        if (!(result == GuessResult.Correct && stats.streak > 1 && newBestStreak)) {
-            statsText.Append(" Best streak: **");
-            statsText.Append(stats.maxStreak);
-            statsText.Append("x**.");
+        switch (result) {
+            case GuessResult.Correct:
+                if (stats.streak < 2)
+                    break;
+                content.Append("You're on a **");
+                content.Append(stats.streak);
+                content.Append("x** streak");
+                if (newBestStreak)
+                    content.Append(", this is your **new best**");
+                content.Append("! 🔥");
+                content.AppendLine();
+                break;
+            default:
+                if (prevStreak < 2)
+                    break;
+                content.Append("You broke a **");
+                content.Append(prevStreak);
+                content.Append("x** streak... 💔");
+                content.AppendLine();
+                break;
+        }
+        content.Append("**");
+        content.Append(stats.correct);
+        content.Append("**/**");
+        content.Append(stats.total);
+        content.Append("** correct guesses total (**");
+        content.Append(CultureInfo.InvariantCulture, $"{(float)stats.correct / stats.total * 100.0f:F1}");
+        content.Append("%**).");
+        if (!(result == GuessResult.Correct && stats.streak >= 2 && newBestStreak)) {
+            content.Append(" Best streak: **");
+            content.Append(stats.maxStreak);
+            content.Append("x**.");
         }
         if (statsSaveFail) {
             // hopefully nobody ever sees this :-)
-            statsText.AppendLine("-# ⚠️ Failed to save stats, sorry... :<");
+            content.AppendLine("-# ⚠️ Failed to save stats, sorry... :<");
         }
 
         Embed[] quoteEmbeds = Util.QuoteToEmbeds(quote).ToArray();
         await response.ModifyAsync(x => {
-            x.Content = result switch {
-                GuessResult.Incorrect => $"### {resultText} This quote is not by <@{guessId}>.\n{statsText}",
-                _ => $"### {resultText} This quote is by <@{quote.authorId}>.\n{statsText}"
-            };
+            x.Content = content.ToString();
             x.AllowedMentions = AllowedMentions.None;
             x.Embeds = quoteEmbeds;
             ComponentBuilder component = new ComponentBuilder()
