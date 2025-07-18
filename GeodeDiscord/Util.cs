@@ -96,7 +96,7 @@ public static class Util {
         if (quote.createdAt != quote.lastEditedAt) {
             description.AppendLine();
             description.AppendLine();
-            description.Append("Last edited at <t:");
+            description.Append("Last edited <t:");
             description.Append(quote.lastEditedAt.ToUnixTimeSeconds());
             description.Append(":f>");
         }
