@@ -228,7 +228,7 @@ public partial class QuoteModule {
             );
             return;
         }
-        if (interaction.User.Id == interaction.Message.InteractionMetadata.User.Id) {
+        if (interaction.User.Id != interaction.Message.InteractionMetadata.User.Id) {
             await RespondAsync(
                 text: "❌ Only the user that started the game can make a guess!",
                 ephemeral: true
