@@ -148,7 +148,6 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         user ??= Context.User;
 
         StringBuilder stats = new();
-        stats.AppendLine($"## {user.Mention}'s stats:");
 
         int quotedCount = await db.quotes.CountAsync(x => x.authorId == user.Id);
         GuessStats? guess = await db.guessStats.FindAsync(user.Id);
@@ -169,7 +168,20 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
                 stats.AppendLine($"- Achieved a maximum streak of **{guess.maxStreak}** correct guesses in a row.");
         }
 
-        await FollowupAsync(stats.ToString(), allowedMentions: AllowedMentions.None);
+        if (stats.Length == 0) {
+            await RespondAsync("❌ No stats to show... :<", ephemeral: true);
+            return;
+        }
+
+        await FollowupAsync(
+            allowedMentions: AllowedMentions.None,
+            embed: new EmbedBuilder()
+                .WithAuthor(new EmbedAuthorBuilder()
+                    .WithName(user.GlobalName)
+                    .WithIconUrl(user.GetDisplayAvatarUrl()))
+                .WithDescription(stats.ToString())
+                .Build()
+        );
     }
 
     [SlashCommand("random", "Gets a random quote."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
