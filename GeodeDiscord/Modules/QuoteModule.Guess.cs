@@ -160,9 +160,9 @@ public partial class QuoteModule {
 
         StringBuilder content = new();
         content.Append(result switch {
-            GuessResult.Timeout => "### 🕛 YOUR TAKING TOO LONG...",
-            GuessResult.Correct => "### ✅ Correct!",
-            GuessResult.Incorrect => "### ❌ Incorrect!",
+            GuessResult.Timeout => "### 🕛 YOUR TAKING TOO LONG... ",
+            GuessResult.Correct => "### ✅ Correct! ",
+            GuessResult.Incorrect => "### ❌ Incorrect! ",
             _ => "### ❓ ?????"
         });
         switch (result) {
