@@ -145,6 +145,7 @@ public static class Util {
             .WithAuthor("?????")
             .WithDescription(description.ToString())
             .WithImageUrl(quote.images.Length > 0 ? quote.images[0] : null)
+            .WithTimestamp(DateTimeOffset.FromUnixTimeSeconds(694201337))
             .WithFooter(footer.ToString())
             .Build();
 
