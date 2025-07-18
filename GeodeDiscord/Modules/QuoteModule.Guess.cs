@@ -200,18 +200,20 @@ public partial class QuoteModule {
                 content.AppendLine();
                 break;
         }
-        content.Append("**");
+        content.Append(Context.User.Mention);
+        content.Append(" has made **");
         content.Append(stats.correct);
         content.Append("**/**");
         content.Append(stats.total);
-        content.Append("** correct guesses total (**");
+        content.Append("** (**");
         content.Append(CultureInfo.InvariantCulture, $"{(float)stats.correct / stats.total * 100.0f:F1}");
-        content.Append("%**).");
+        content.Append("%**) correct guesses in total");
         if (!(result == GuessResult.Correct && stats.streak >= 2 && newBestStreak)) {
-            content.Append(" Best streak: **");
+            content.Append(" and achieved a maximum streak of **");
             content.Append(stats.maxStreak);
-            content.Append("x**.");
+            content.Append("** correct guesses in a row");
         }
+        content.AppendLine(".");
         if (statsSaveFail) {
             // hopefully nobody ever sees this :-)
             content.AppendLine("-# ⚠️ Failed to save stats, sorry... :<");
