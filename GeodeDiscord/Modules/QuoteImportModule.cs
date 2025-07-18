@@ -78,6 +78,25 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
         await RespondAsync($"Quote **{quote.GetFullName()}** author changed to `{newAuthor.Id}`!");
     }
 
+    [SlashCommand("clear-last-edited", "Clears the last edited date."), CommandContextType(InteractionContextType.Guild),
+     UsedImplicitly]
+    public async Task ClearLastEdited([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] int id) {
+        Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
+        if (quote is null) {
+            await RespondAsync("❌ Quote not found!", ephemeral: true);
+            return;
+        }
+        db.Remove(quote);
+        db.Add(quote with { lastEditedAt = quote.createdAt });
+        try { await db.SaveChangesAsync(); }
+        catch (Exception ex) {
+            Log.Error(ex, "Failed to change quote");
+            await RespondAsync("❌ Failed to change quote!", ephemeral: true);
+            return;
+        }
+        await RespondAsync($"Quote **{quote.GetFullName()}** last edited cleared!");
+    }
+
     private readonly record struct UberBotQuote
         (string id, string nick, string channel, string messageId, string text, long time);
 
