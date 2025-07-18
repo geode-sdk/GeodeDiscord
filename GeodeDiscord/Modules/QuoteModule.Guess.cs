@@ -200,7 +200,7 @@ public partial class QuoteModule {
         float correctPercent = (float)stats.correct / stats.total * 100.0f;
         content.Append($"-# You have made **{stats.correct}**/**{stats.total}** (**{correctPercent:F1}%**) correct guesses in total");
         if (!(stats.streak > 1 && newBestStreak))
-            content.Append($" with a best of **{stats.maxStreak}** correct guesses in a row");
+            content.Append($" with a best streak of **{stats.maxStreak}** in a row");
         content.AppendLine(".");
         if (statsSaveFail) {
             // hopefully nobody ever sees this :-)
