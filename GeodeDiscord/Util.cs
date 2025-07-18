@@ -74,37 +74,21 @@ public static class Util {
         StringBuilder description = new();
         description.AppendLine(quote.content);
         description.AppendLine();
-        description.Append("\\- <@");
-        description.Append(quote.authorId);
-        description.Append('>');
+        description.Append($"\\- <@{quote.authorId}>");
         if (quote.replyAuthorId != 0) {
-            description.Append(" to <@");
-            description.Append(quote.replyAuthorId);
-            description.Append('>');
+            description.Append($" to <@{quote.replyAuthorId}>");
         }
-        description.Append(" in ");
-        description.Append(quote.jumpUrl ?? "<unknown>");
-        description.Append(" by <");
-        if (quote.quoterId == 0) {
-            description.Append("unknown");
-        }
-        else {
-            description.Append('@');
-            description.Append(quote.quoterId);
-        }
-        description.Append('>');
+        description.Append($" in {quote.jumpUrl ?? "<unknown>"}");
+        description.Append(quote.quoterId == 0 ? " by <unknown>" : $" by <@{quote.quoterId}>");
         if (quote.createdAt != quote.lastEditedAt) {
             description.AppendLine();
             description.AppendLine();
-            description.Append("Last edited <t:");
-            description.Append(quote.lastEditedAt.ToUnixTimeSeconds());
-            description.Append(":f>");
+            description.Append($"Last edited <t:{quote.lastEditedAt.ToUnixTimeSeconds()}:f>");
         }
 
         StringBuilder footer = new();
         if (quote.extraAttachments != 0) {
-            footer.Append(quote.extraAttachments.ToString("+0;-#"));
-            footer.Append(" attachment");
+            footer.Append($"{quote.extraAttachments.ToString("+0;-#")} attachment");
             if (quote.extraAttachments != 1)
                 footer.Append('s');
         }
@@ -135,8 +119,7 @@ public static class Util {
 
         StringBuilder footer = new();
         if (quote.extraAttachments != 0) {
-            footer.Append(quote.extraAttachments.ToString("+0;-#"));
-            footer.Append(" attachment");
+            footer.Append($"{quote.extraAttachments.ToString("+0;-#")} attachment");
             if (quote.extraAttachments != 1)
                 footer.Append('s');
         }
