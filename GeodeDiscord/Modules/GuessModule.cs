@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-
+using GeodeDiscord.Database;
 using GeodeDiscord.Database.Entities;
 
 using JetBrains.Annotations;
@@ -15,7 +15,8 @@ using Serilog;
 
 namespace GeodeDiscord.Modules;
 
-public partial class QuoteModule {
+[Group("guess", "Play guess with quotes!"), UsedImplicitly]
+public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
     private static readonly ConcurrentDictionary<ulong, IUser?> extraUserCache = [];
 
     private async Task<IUser?> GetUserAsync(ulong id) {
@@ -35,7 +36,7 @@ public partial class QuoteModule {
 
     private enum GuessResult { Timeout, Incorrect, Correct }
 
-    [SlashCommand("guess", "Try to guess who said this!"), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
+    [SlashCommand("guess", "Try to guess who said this!", true), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     [ComponentInteraction("guess-again")]
     public async Task Guess() {
         await DeferAsync();
@@ -104,7 +105,7 @@ public partial class QuoteModule {
         foreach ((ulong id, string name) in users) {
             components.WithButton(
                 name,
-                $"quote/guess-button:{id}"
+                $"guess/guess-button:{id}"
             );
         }
         IUserMessage response = await FollowupAsync(
@@ -122,9 +123,9 @@ public partial class QuoteModule {
                 inter.Type == InteractionType.MessageComponent &&
                 inter is SocketMessageComponent msg &&
                 msg.Message.Id == response.Id &&
-                msg.Data.CustomId.StartsWith("quote/guess-button:")
+                msg.Data.CustomId.StartsWith("guess/guess-button:")
         ) as SocketMessageComponent;
-        ulong guessId = ulong.Parse(interaction?.Data.CustomId["quote/guess-button:".Length..] ?? "0");
+        ulong guessId = ulong.Parse(interaction?.Data.CustomId["guess/guess-button:".Length..] ?? "0");
 
         GuessResult result = guessId == 0 || interaction is null ? GuessResult.Timeout :
             quote.authorId == guessId ? GuessResult.Correct : GuessResult.Incorrect;
@@ -213,9 +214,9 @@ public partial class QuoteModule {
             x.AllowedMentions = AllowedMentions.None;
             x.Embeds = quoteEmbeds;
             ComponentBuilder component = new ComponentBuilder()
-                .WithButton("Guess again!", "quote/guess-again", ButtonStyle.Primary, new Emoji("❓"));
+                .WithButton("Guess again!", "guess/guess-again", ButtonStyle.Primary, new Emoji("❓"));
             if (guessId != 0)
-                component.WithButton("Fix names", "quote/guess-fix-names", ButtonStyle.Secondary, new Emoji("🔧"));
+                component.WithButton("Fix names", "guess/guess-fix-names", ButtonStyle.Secondary, new Emoji("🔧"));
             x.Components = component.Build();
         });
     }
@@ -286,7 +287,7 @@ public partial class QuoteModule {
             x.AllowedMentions = AllowedMentions.None;
             x.Embeds = msg.Embeds.ToArray();
             x.Components = new ComponentBuilder()
-                .WithButton("Guess again!", "quote/guess-again", ButtonStyle.Primary, new Emoji("❓"))
+                .WithButton("Guess again!", "guess/guess-again", ButtonStyle.Primary, new Emoji("❓"))
                 .Build();
         });
     }
