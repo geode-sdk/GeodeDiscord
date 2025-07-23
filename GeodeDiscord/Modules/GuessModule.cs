@@ -334,7 +334,7 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         );
     }
 
-    [Group("leaderboards", "Guess leaderboards")]
+    [Group("leaderboards", "Guess leaderboards.")]
     public class LeaderboardsModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
         [SlashCommand("correct", "Shows top 10 most correct guesses."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
         public async Task GetCorrect() {
