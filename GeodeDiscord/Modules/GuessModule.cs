@@ -36,7 +36,7 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
 
     private enum GuessResult { Timeout, Incorrect, Correct }
 
-    [SlashCommand("guess", "Try to guess who said this!", true), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
+    [SlashCommand("play", "Try to guess who said this!"), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     [ComponentInteraction("guess-again")]
     public async Task Guess() {
         await DeferAsync();
