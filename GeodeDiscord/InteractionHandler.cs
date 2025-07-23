@@ -23,14 +23,14 @@ public class InteractionHandler(DiscordSocketClient client, InteractionService h
     }
 
     private async Task ReadyAsync() {
-        ulong testGuild = ulong.Parse(Environment.GetEnvironmentVariable("DISCORD_TEST_GUILD") ?? "0");
 #if DEBUG
+        ulong testGuild = ulong.Parse(Environment.GetEnvironmentVariable("DISCORD_TEST_GUILD") ?? "0");
         if (testGuild != 0)
             await handler.RegisterCommandsToGuildAsync(testGuild);
         await client.SetActivityAsync(new CustomStatusGame("being debugged rn yay"));
 #else
-        if (testGuild != 0)
-            await handler.RestClient.BulkOverwriteGuildCommands([], testGuild);
+        foreach (SocketGuild guild in client.Guilds)
+            await handler.RestClient.BulkOverwriteGuildCommands([], guild.Id);
         await handler.RegisterCommandsGloballyAsync();
 #endif
     }
