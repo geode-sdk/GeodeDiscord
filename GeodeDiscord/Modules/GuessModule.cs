@@ -292,6 +292,37 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         });
     }
 
+    [Group("leaderboards", "Guess leaderboards")]
+    public class LeaderboardsModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
+        [SlashCommand("correct", "Shows top 10 most correct guesses."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
+        public async Task GetCorrect() {
+            await DeferAsync();
+            IEnumerable<string> lines = db.guessStats
+                .OrderByDescending(x => x.correct)
+                .Take(10)
+                .AsEnumerable()
+                .Select((x, i) => $"{i + 1}. <@{x.userId}> - **{x.correct}** correct guesses");
+            await FollowupAsync(
+                text: $"## 🏆 10 most correct guesses:\n{string.Join("\n", lines)}",
+                allowedMentions: AllowedMentions.None
+            );
+        }
+
+        [SlashCommand("streak", "Shows top 10 highest guess streaks."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
+        public async Task GetStreak() {
+            await DeferAsync();
+            IEnumerable<string> lines = db.guessStats
+                .OrderByDescending(x => x.maxStreak)
+                .Take(10)
+                .AsEnumerable()
+                .Select((x, i) => $"{i + 1}. <@{x.userId}> - **{x.maxStreak}** correct guesses in a row");
+            await FollowupAsync(
+                text: $"## 🏆 10 highest guess streaks:\n{string.Join("\n", lines)}",
+                allowedMentions: AllowedMentions.None
+            );
+        }
+    }
+
     [GeneratedRegex(@"\\- <@(.*?)>")]
     private static partial Regex AuthorIdRegex();
 
