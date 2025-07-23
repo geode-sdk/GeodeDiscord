@@ -292,6 +292,48 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         });
     }
 
+    [SlashCommand("stats", "Shows some quote related stats."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
+    public async Task GetStats(IUser? user = null) {
+        await DeferAsync();
+
+        user ??= Context.User;
+
+        StringBuilder stats = new();
+
+        int quotedCount = await db.quotes.CountAsync(x => x.authorId == user.Id);
+        GuessStats? guess = await db.guessStats.FindAsync(user.Id);
+
+        if (quotedCount > 0)
+            stats.AppendLine($"- Has been quoted **{quotedCount}** times.");
+        if (guess is not null && guess.total > 0) {
+            stats.AppendLine($"- Has made **{guess.total}** total quote guesses...");
+            if (guess.correct > 0) {
+                float correctPercent = (float)guess.correct / guess.total * 100.0f;
+                stats.AppendLine($"- ...**{guess.correct}** (**{correctPercent:F1}%**) of which were correct.");
+            }
+            else {
+                stats.AppendLine("- ...none of which were correct.");
+            }
+            if (guess.maxStreak > 1)
+                stats.AppendLine($"- Achieved a maximum streak of **{guess.maxStreak}** correct guesses in a row.");
+        }
+
+        if (stats.Length == 0) {
+            await RespondAsync("❌ No stats to show... :<", ephemeral: true);
+            return;
+        }
+
+        await FollowupAsync(
+            allowedMentions: AllowedMentions.None,
+            embed: new EmbedBuilder()
+                .WithAuthor(new EmbedAuthorBuilder()
+                    .WithName(user.GlobalName)
+                    .WithIconUrl(user.GetDisplayAvatarUrl()))
+                .WithDescription(stats.ToString())
+                .Build()
+        );
+    }
+
     [Group("leaderboards", "Guess leaderboards")]
     public class LeaderboardsModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
         [SlashCommand("correct", "Shows top 10 most correct guesses."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
