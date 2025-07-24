@@ -24,7 +24,7 @@ public record Quote {
     public string? jumpUrl { get; init; }
 
     // attachments
-    public required string[] images { get; init; }
+    public required string images { get; init; }
     public required int extraAttachments { get; init; }
 
     // content

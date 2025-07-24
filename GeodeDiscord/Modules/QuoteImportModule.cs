@@ -244,7 +244,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 replyAuthorId = 0,
                 jumpUrl = string.IsNullOrWhiteSpace(channelName) ? null : $"#{channelName}",
 
-                images = [],
+                images = "",
                 extraAttachments = 0,
 
                 content = text
