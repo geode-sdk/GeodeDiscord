@@ -307,19 +307,63 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         int correct = await db.guesses.Where(x => x.userId == user.Id && x.guessId == x.quote.authorId).CountAsync();
         int maxStreak = await QueryStreaks(db, user.Id).Where(x => x.isCorrect).MaxAsync(x => x.count);
 
+        int totalGuessed = await db.guesses.Where(x => x.guessId == user.Id).CountAsync();
+        int totalOther = await db.guesses.Where(x => x.quote.authorId == user.Id).CountAsync();
+        int correctOther = await db.guesses.Where(x => x.quote.authorId == user.Id && x.guessId == x.quote.authorId).CountAsync();
+
+        int totalSelf = await db.guesses.Where(x => x.userId == user.Id && x.quote.authorId == user.Id).CountAsync();
+        int incorrectSelf = await db.guesses
+            .Where(x => x.userId == user.Id && x.quote.authorId == user.Id && x.guessId != x.quote.authorId)
+            .CountAsync();
+
         if (quotedCount > 0)
-            stats.AppendLine($"- Has been quoted **{quotedCount}** times.");
+            stats.AppendLine($"- Has been quoted **{quotedCount}** time{Suffix(quotedCount, "s")}.");
         if (total > 0) {
-            stats.AppendLine($"- Has made **{total}** total quote guesses...");
+            stats.AppendLine($"- Has made **{total}** total quote guess{Suffix(total, "es")}...");
             if (correct > 0) {
                 float correctPercent = (float)correct / total * 100.0f;
-                stats.AppendLine($"- ...**{correct}** (**{correctPercent:F1}%**) of which were correct.");
+                stats.AppendLine($"  - ...**{correct}** (**{correctPercent:F1}%**) of which {Choose(correct, "was", "were")} correct.");
             }
             else {
-                stats.AppendLine("- ...none of which were correct.");
+                stats.AppendLine("  - ...none of which were correct.");
             }
             if (maxStreak > 1)
                 stats.AppendLine($"- Achieved a maximum streak of **{maxStreak}** correct guesses in a row.");
+        }
+        if (totalOther > 0) {
+            stats.AppendLine($"- Has been the correct guess **{totalOther}** time{Suffix(totalOther, "s")}...");
+            if (correctOther > 0) {
+                float correctPercent = (float)correctOther / totalOther * 100.0f;
+                if (correctPercent > 60.0f)
+                    stats.AppendLine($"  - ...and guessed correctly **{correctOther}** time{Suffix(correctOther, "s")} (**{correctPercent:F1}%**).");
+                else
+                    stats.AppendLine($"  - ...but only guessed correctly **{correctOther}** time{Suffix(correctOther, "s")} (**{correctPercent:F1}%**).");
+            }
+            else {
+                stats.AppendLine("  - ...but never guessed correctly.");
+            }
+        }
+        if (totalGuessed > 0) {
+            stats.AppendLine($"- Has been guessed **{totalGuessed}** time{Suffix(totalGuessed, "s")}...");
+            if (correctOther > 0) {
+                float correctPercent = (float)correctOther / totalGuessed * 100.0f;
+                if (correctPercent > 60.0f)
+                    stats.AppendLine($"  - ...and **{correctOther}** (**{correctPercent:F1}%**) of the guesses {Choose(correctOther, "was", "were")} correct.");
+                else
+                    stats.AppendLine($"  - ...but only **{correctOther}** (**{correctPercent:F1}%**) of the guesses {Choose(correctOther, "was", "were")} correct.");
+            }
+            else {
+                stats.AppendLine("  - ...but none of the guesses were correct.");
+            }
+        }
+        if (totalSelf > 0) {
+            if (incorrectSelf > 0) {
+                stats.AppendLine($"- Has gotten to guess themselves **{totalSelf}** time{Suffix(totalSelf, "s")}!..");
+                stats.AppendLine($"  - ...and somehow failed **{incorrectSelf}** time{Suffix(incorrectSelf, "s")}.");
+            }
+            else {
+                stats.AppendLine($"- Has gotten to guess themselves **{totalSelf}** time{Suffix(totalSelf, "s")}!");
+            }
         }
 
         if (stats.Length == 0) {
@@ -336,6 +380,11 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
                 .WithDescription(stats.ToString())
                 .Build()
         );
+
+        return;
+
+        static string Suffix(int x, string suffix) => x == 1 ? "" : suffix;
+        static string Choose(int x, string singular, string plural) => x == 1 ? singular : plural;
     }
 
     [Group("leaderboards", "Guess leaderboards.")]
