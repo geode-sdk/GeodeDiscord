@@ -9,7 +9,7 @@ COPY ["GeodeDiscord/GeodeDiscord.csproj", "GeodeDiscord/"]
 RUN dotnet restore "GeodeDiscord/GeodeDiscord.csproj"
 COPY GeodeDiscord/. ./GeodeDiscord
 WORKDIR "/src/GeodeDiscord"
-RUN dotnet build "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet build "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/build --no-restore
 
 FROM build AS migrations
 ARG BUILD_CONFIGURATION=Release
@@ -19,7 +19,7 @@ RUN dotnet ef database update -p GeodeDiscord.csproj -s GeodeDiscord.csproj --co
 
 FROM migrations AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false --no-build
 
 FROM base AS final
 WORKDIR /app
