@@ -2,24 +2,19 @@
 USER $APP_UID
 WORKDIR /app
 
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS publish
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["GeodeDiscord/GeodeDiscord.csproj", "GeodeDiscord/"]
-RUN dotnet restore "GeodeDiscord/GeodeDiscord.csproj"
 COPY GeodeDiscord/. ./GeodeDiscord
 WORKDIR "/src/GeodeDiscord"
-RUN dotnet build "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet publish "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
-FROM build AS migrations
+FROM publish AS migrations
 ARG BUILD_CONFIGURATION=Release
 RUN dotnet tool install --global dotnet-ef
 ENV PATH="$PATH:/root/.dotnet/tools"
-ENTRYPOINT ["dotnet", "ef", "database", "update", "--project", "GeodeDiscord.csproj", "--startup-project", "GeodeDiscord.csproj", "--configuration", "${BUILD_CONFIGURATION}"]
-
-FROM build AS publish
-ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet ef database update --project GeodeDiscord.csproj --startup-project GeodeDiscord.csproj --configuration $BUILD_CONFIGURATION
 
 FROM base AS final
 WORKDIR /app
