@@ -171,6 +171,22 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
             await ReplyAsync(messageReference: Util.QuoteToForward(quote));
     }
 
+    [ComponentInteraction("guess-again"), UsedImplicitly]
+    private Task GuessAgainOld() {
+        GuessModule module = new(db);
+        (module as IInteractionModuleBase).SetContext(Context);
+        return Context.Guild.Id == 911701438269386882 && Context.Channel.Id != 1102573869832876042 ?
+            RespondAsync("❌ Can only guess again old messages in <#1102573869832876042>!", ephemeral: true) :
+            module.Guess();
+    }
+
+    [ComponentInteraction("guess-fix-names"), UsedImplicitly]
+    private Task GuessFixNamesOld() {
+        GuessModule module = new(db);
+        (module as IInteractionModuleBase).SetContext(Context);
+        return module.GuessFixNames();
+    }
+
     public class QuoteAutocompleteHandler(ApplicationDbContext db) : AutocompleteHandler {
         public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
             IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider services) {

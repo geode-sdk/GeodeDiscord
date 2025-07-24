@@ -243,7 +243,7 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
     }
 
     [ComponentInteraction("guess-fix-names"), UsedImplicitly]
-    private async Task GuessFixNames() {
+    public async Task GuessFixNames() {
         if (Context.Interaction is not SocketMessageComponent interaction) {
             await RespondAsync("❌ Failed to fix names: interaction is not from a message..?", ephemeral: true);
             return;
