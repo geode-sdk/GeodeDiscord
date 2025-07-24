@@ -18,5 +18,5 @@ RUN dotnet ef database update --project GeodeDiscord.csproj --startup-project Ge
 
 FROM base AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
+COPY --from=migrations /app/publish .
 ENTRYPOINT ["dotnet", "GeodeDiscord.dll"]
