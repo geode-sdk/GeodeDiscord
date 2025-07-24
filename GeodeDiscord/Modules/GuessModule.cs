@@ -242,12 +242,12 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         await DeferAsync();
     }
 
-    [ComponentInteraction("quote/guess-again", true), UsedImplicitly]
+    [ComponentInteraction("quote guess-again", true), UsedImplicitly]
     private Task GuessAgainOld() => Context.Guild.Id == 911701438269386882 && Context.Channel.Id != 1102573869832876042 ?
         RespondAsync("❌ Can only guess again old messages in <#1102573869832876042>!", ephemeral: true) :
         Guess();
 
-    [ComponentInteraction("quote/guess-fix-names", true), UsedImplicitly]
+    [ComponentInteraction("quote guess-fix-names", true), UsedImplicitly]
     private Task GuessFixNamesOld() => GuessFixNames();
 
     [ComponentInteraction("guess-fix-names"), UsedImplicitly]
