@@ -14,7 +14,7 @@ FROM publish AS migrations
 ARG BUILD_CONFIGURATION=Release
 RUN dotnet tool install --global dotnet-ef
 ENV PATH="$PATH:/root/.dotnet/tools"
-RUN dotnet ef database update --project GeodeDiscord.csproj --startup-project GeodeDiscord.csproj --configuration $BUILD_CONFIGURATION
+RUN dotnet ef database update -p GeodeDiscord.csproj -s GeodeDiscord.csproj --configuration $BUILD_CONFIGURATION --no-build
 
 FROM base AS final
 WORKDIR /app
