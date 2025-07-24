@@ -127,52 +127,53 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         ) as SocketMessageComponent;
         ulong guessId = ulong.Parse(interaction?.Data.CustomId["guess/guess-button:".Length..] ?? "0");
 
-        GuessResult result = guessId == 0 || interaction is null ? GuessResult.Timeout :
-            quote.authorId == guessId ? GuessResult.Correct : GuessResult.Incorrect;
+        int prevMaxStreak = await QueryStreaks(db, Context.User.Id).Where(x => x.isCorrect).MaxAsync(x => x.count);
+        Streak? prevStreak = await QueryStreaks(db, Context.User.Id).OrderBy(x => x.id).LastOrDefaultAsync();
 
-        GuessStats? stats = await db.guessStats.FindAsync(Context.User.Id);
-        if (stats is null) {
-            stats = new GuessStats { userId = Context.User.Id };
-            db.Add(stats);
-        }
-        ulong prevStreak = stats.streak;
-        bool newBestStreak = false;
-        stats.total++;
-        switch (result) {
-            case GuessResult.Correct:
-                stats.correct++;
-                stats.streak++;
-                ulong prevMaxStreak = stats.maxStreak;
-                stats.maxStreak = Math.Max(stats.streak, stats.maxStreak);
-                newBestStreak = stats.maxStreak > prevMaxStreak;
-                break;
-            default:
-                stats.streak = 0;
-                break;
-        }
+        db.Add(new Guess {
+            messageId = response.Id,
+            guessedAt = interaction?.CreatedAt ?? response.CreatedAt + TimeSpan.FromSeconds(60d),
+            userId = Context.User.Id,
+            guessId = guessId,
+            quote = quote
+        });
 
-        bool statsSaveFail = false;
+        bool saveFail = false;
         try { await db.SaveChangesAsync(); }
         catch (Exception ex) {
             Log.Error(ex, "Failed to save stats");
-            statsSaveFail = true;
+            saveFail = true;
         }
+
+        int total = await db.guesses
+            .Where(x => x.userId == Context.User.Id)
+            .CountAsync();
+        int correct = await db.guesses
+            .Where(x => x.userId == Context.User.Id && x.guessId == x.quote.authorId)
+            .CountAsync();
+
+        GuessResult result = guessId == 0 || interaction is null ? GuessResult.Timeout :
+            quote.authorId == guessId ? GuessResult.Correct : GuessResult.Incorrect;
+
+        int streak = prevStreak?.isCorrect == (result == GuessResult.Correct) ? prevStreak.count + 1 : 0;
+        int maxStreak = result == GuessResult.Correct ? Math.Max(streak, prevMaxStreak) : prevMaxStreak;
+        bool newBestStreak = maxStreak > prevMaxStreak;
 
         StringBuilder content = new("### ");
 
         // emote
         content.Append(result switch {
-            GuessResult.Timeout or GuessResult.Incorrect when prevStreak > 1 => "💔 ",
+            GuessResult.Timeout or GuessResult.Incorrect when prevStreak is { isCorrect: true, count: > 1 } => "💔 ",
             GuessResult.Timeout => "🕛 ",
             GuessResult.Incorrect => "❌ ",
-            GuessResult.Correct when stats.streak > 1 && newBestStreak => "🔥 ",
+            GuessResult.Correct when streak > 1 && newBestStreak => "🔥 ",
             GuessResult.Correct => "✅ ",
             _ => "❓ "
         });
 
         // streak
-        if (stats.streak > 1) {
-            content.Append($"{stats.streak}x");
+        if (streak > 1) {
+            content.Append($"{streak}x");
             if (newBestStreak)
                 content.Append(", new best");
             content.Append("! ");
@@ -186,7 +187,7 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             case GuessResult.Incorrect:
                 content.AppendLine($"Good guess, {Context.User.Mention}, but this quote is not by <@{guessId}>...");
                 break;
-            case GuessResult.Correct when stats.streak > 1:
+            case GuessResult.Correct when streak > 1:
                 content.AppendLine($"Keep it going, {Context.User.Mention}, this quote is by <@{quote.authorId}>!");
                 break;
             case GuessResult.Correct:
@@ -198,12 +199,12 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         }
 
         // stats
-        float correctPercent = (float)stats.correct / stats.total * 100.0f;
-        content.Append($"-# You have made **{stats.correct}**/**{stats.total}** (**{correctPercent:F1}%**) correct guesses in total");
-        if (!(stats.streak > 1 && newBestStreak))
-            content.Append($" with a best streak of **{stats.maxStreak}** in a row");
+        float correctPercent = (float)correct / total * 100.0f;
+        content.Append($"-# You have made **{correct}**/**{total}** (**{correctPercent:F1}%**) correct guesses in total");
+        if (!(streak > 1 && newBestStreak))
+            content.Append($" with a best streak of **{maxStreak}** in a row");
         content.AppendLine(".");
-        if (statsSaveFail) {
+        if (saveFail) {
             // hopefully nobody ever sees this :-)
             content.AppendLine("-# ⚠️ Failed to save stats, sorry... :<");
         }
@@ -301,21 +302,24 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         StringBuilder stats = new();
 
         int quotedCount = await db.quotes.CountAsync(x => x.authorId == user.Id);
-        GuessStats? guess = await db.guessStats.FindAsync(user.Id);
+
+        int total = await db.guesses.Where(x => x.userId == user.Id).CountAsync();
+        int correct = await db.guesses.Where(x => x.userId == user.Id && x.guessId == x.quote.authorId).CountAsync();
+        int maxStreak = await QueryStreaks(db, user.Id).Where(x => x.isCorrect).MaxAsync(x => x.count);
 
         if (quotedCount > 0)
             stats.AppendLine($"- Has been quoted **{quotedCount}** times.");
-        if (guess is not null && guess.total > 0) {
-            stats.AppendLine($"- Has made **{guess.total}** total quote guesses...");
-            if (guess.correct > 0) {
-                float correctPercent = (float)guess.correct / guess.total * 100.0f;
-                stats.AppendLine($"- ...**{guess.correct}** (**{correctPercent:F1}%**) of which were correct.");
+        if (total > 0) {
+            stats.AppendLine($"- Has made **{total}** total quote guesses...");
+            if (correct > 0) {
+                float correctPercent = (float)correct / total * 100.0f;
+                stats.AppendLine($"- ...**{correct}** (**{correctPercent:F1}%**) of which were correct.");
             }
             else {
                 stats.AppendLine("- ...none of which were correct.");
             }
-            if (guess.maxStreak > 1)
-                stats.AppendLine($"- Achieved a maximum streak of **{guess.maxStreak}** correct guesses in a row.");
+            if (maxStreak > 1)
+                stats.AppendLine($"- Achieved a maximum streak of **{maxStreak}** correct guesses in a row.");
         }
 
         if (stats.Length == 0) {
@@ -339,7 +343,9 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         [SlashCommand("correct", "Shows top 10 most correct guesses."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
         public async Task GetCorrect() {
             await DeferAsync();
-            IEnumerable<string> lines = db.guessStats
+            IEnumerable<string> lines = db.guesses
+                .GroupBy(x => x.userId)
+                .Select(x => new { userId = x.Key, correct = x.Count(y => y.guessId == y.quote.authorId) })
                 .OrderByDescending(x => x.correct)
                 .Take(10)
                 .AsEnumerable()
@@ -353,7 +359,10 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         [SlashCommand("streak", "Shows top 10 highest guess streaks."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
         public async Task GetStreak() {
             await DeferAsync();
-            IEnumerable<string> lines = db.guessStats
+            IEnumerable<string> lines = QueryStreaks(db, 0)
+                .Where(x => x.isCorrect)
+                .GroupBy(x => x.userId)
+                .Select(x => new { userId = x.Key, maxStreak = x.Max(y => y.count) })
                 .OrderByDescending(x => x.maxStreak)
                 .Take(10)
                 .AsEnumerable()
@@ -364,6 +373,27 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             );
         }
     }
+
+    private record Streak(int id, int count, bool isCorrect, ulong userId);
+
+#pragma warning disable EF1002
+    private static IQueryable<Streak> QueryStreaks(ApplicationDbContext db, ulong userId) =>
+        db.Database.SqlQueryRaw<Streak>($"""
+            SELECT group_id as id, COUNT() AS count, is_correct as isCorrect, userId
+            FROM (
+                SELECT *, SUM(is_new_group) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS group_id
+                FROM (
+                    SELECT *, is_correct != LAG(is_correct, 1, is_correct) OVER () AS is_new_group
+                    FROM (
+                        SELECT *, guessId == (SELECT authorId FROM quotes WHERE messageId = quoteMessageId) AS is_correct
+                        FROM guesses
+                        {(userId == 0 ? "" : $"WHERE userId = {userId}")}
+                    )
+                )
+            )
+            GROUP BY id
+            """);
+#pragma warning restore EF1002
 
     [GeneratedRegex(@"\\- <@(.*?)>")]
     private static partial Regex AuthorIdRegex();

@@ -97,6 +97,226 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
         await RespondAsync($"Quote **{quote.GetFullName()}** last edited cleared!");
     }
 
+    [Group("guesses", "Guesses.")]
+    public partial class GuessesModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
+        [SlashCommand("import", "Import guesses from HAR file."),
+         CommandContextType(InteractionContextType.Guild),
+         UsedImplicitly]
+        public async Task ImportGuesses(Attachment attachment) {
+            await DeferAsync();
+            Log.Information("[quote-import] Beginning guesses import from {File}", attachment.Filename);
+
+            JsonDocument? toImport;
+            try {
+                await ModifyOriginalResponseAsync(prop =>
+                    prop.Content = $"Importing guesses from {attachment.Filename}: downloading & deserializing JSON"
+                );
+                using HttpClient client = new();
+                Stream data = await client.GetStreamAsync(attachment.Url);
+                toImport = await JsonSerializer.DeserializeAsync<JsonDocument>(data);
+            }
+            catch (JsonException ex) {
+                Log.Error(ex, "Failed to import guesses");
+                await FollowupAsync("❌ Failed to import guesses! (failed to deserialize JSON)");
+                return;
+            }
+            catch (Exception ex) {
+                Log.Error(ex, "Failed to import guesses");
+                await FollowupAsync("❌ Failed to import guesses! (unknown error)");
+                return;
+            }
+            if (toImport is null) {
+                Log.Error("Failed to import guesses: toImport is null");
+                await FollowupAsync("❌ Failed to import guesses! (Deserialize returned null)");
+                return;
+            }
+
+            try {
+                await ModifyOriginalResponseAsync(prop =>
+                    prop.Content = $"Importing guesses from {attachment.Filename}: caching quote users"
+                );
+                // get a list of all users that appear in quotes
+                Dictionary<string, ulong> nameToId = await db.quotes
+                    .Select(x => x.authorId)
+                    .Distinct()
+                    .ToAsyncEnumerable()
+                    .SelectAwait(x => Context.Client.GetUserAsync(x))
+                    .Select(x => (x?.GlobalName ?? x?.Username ?? "", x?.Id ?? 0))
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Item1))
+                    .ToDictionaryAsync(x => x.Item1, x => x.Item2);
+                nameToId.Add("sherobrine", 645017179854471178);
+                nameToId.Add("alicia", 1081356418180984952);
+
+                JsonElement entries = toImport.RootElement.GetProperty("log").GetProperty("entries");
+                int importedRequests = 0;
+                int importedGuesses = 0;
+                for (int i = 0; i < entries.GetArrayLength(); i++) {
+                    await ModifyOriginalResponseAsync(prop =>
+                        prop.Content =
+                            $"Importing guesses from {attachment.Filename}: request {i}/{entries.GetArrayLength().ToString()}, {importedGuesses} guesses"
+                    );
+                    int imported = await ImportRequest(entries[i], nameToId);
+                    if (imported < 0)
+                        continue;
+                    importedRequests++;
+                    importedGuesses += imported;
+                }
+
+                try { await db.SaveChangesAsync(); }
+                catch (Exception ex) {
+                    Log.Error(ex, "Failed to import guesses");
+                    await FollowupAsync("❌ Failed to import guesses! (error when writing to the database)");
+                    return;
+                }
+
+                Log.Information(
+                    "[quote-import] Imported {Count} guesses from {ReqCount} requests in {File}", importedGuesses,
+                    importedRequests, attachment.Filename
+                );
+                await ModifyOriginalResponseAsync(prop =>
+                    prop.Content =
+                        $"Imported {importedGuesses} guesses from {importedRequests} requests in {attachment.Filename}."
+                );
+            }
+            catch (Exception ex) {
+                Log.Error(ex, "Failed to import guesses");
+                await FollowupAsync("❌ Failed to import guesses! (unknown error)");
+            }
+        }
+
+        private async Task<int> ImportRequest(JsonElement element, Dictionary<string, ulong> nameToId) {
+            try {
+                string? responseJson = element.GetProperty("response").GetProperty("content").GetProperty("text")
+                    .GetString();
+                if (responseJson is null) {
+                    Log.Warning("[quote-import] Failed to import guesses request: messageJson is null");
+                    await FollowupAsync("⚠️ Failed to import guesses request! (missing content?)");
+                    return -1;
+                }
+                JsonDocument? response = JsonSerializer.Deserialize<JsonDocument>(responseJson);
+                if (response is null) {
+                    Log.Error("[quote-import] Failed to import guesses request: message is null");
+                    await FollowupAsync("⚠️ Failed to import guesses! (Deserialize returned null)");
+                    return -1;
+                }
+                JsonElement messages = response.RootElement.GetProperty("messages");
+                int importedGuesses = 0;
+                for (int i = 0; i < messages.GetArrayLength(); i++) {
+                    for (int j = 0; j < messages[i].GetArrayLength(); j++) {
+                        if (await ImportGuess(messages[i][j], nameToId))
+                            importedGuesses++;
+                    }
+                }
+                return importedGuesses;
+            }
+            catch (Exception ex) {
+                Log.Warning(ex, "[quote-import] Failed to import guesses request");
+                await FollowupAsync("⚠️ Failed to import guesses request! (unknown error)");
+                return -1;
+            }
+        }
+
+        // stupid idiot.
+        // ReSharper disable once CognitiveComplexity
+        private async Task<bool> ImportGuess(JsonElement element, Dictionary<string, ulong> nameToId) {
+            ulong messageId = 0;
+            string channelId = "";
+            try {
+                channelId = element.GetProperty("channel_id").GetString() ?? "";
+                // skip staff chat, i used it for testing too much
+                if (channelId == "985609213051015268")
+                    return false;
+                messageId = ulong.Parse(element.GetProperty("id").GetString() ?? "");
+                // not exactly accurate but it doesnt matter
+                DateTimeOffset guessedAt = element.GetProperty("timestamp").GetDateTimeOffset();
+                string botContent = element.GetProperty("content").GetString() ?? "";
+                bool correct = botContent.Contains('✅') || botContent.Contains("🔥");
+                bool timeout = botContent.Contains("Time's up") || botContent.Contains("🕛") ||
+                    botContent.Contains("TOO LONG") || botContent.Contains("too long");
+                ulong showedId = 0;
+                if (!correct && !timeout && !TryParseShowedId(element, nameToId, out showedId)) {
+                    Log.Warning("[quote-import] Failed to import guess {Id}: could not parse showed id", messageId);
+                    await FollowupAsync(
+                        $"⚠️ Failed to import guess {channelId}/{messageId}! (Could not parse showed id)"
+                    );
+                    return false;
+                }
+                ulong userId = ulong.Parse(
+                    element.GetProperty("interaction_metadata").GetProperty("user").GetProperty("id").GetString() ?? ""
+                );
+                string content = ContentRegex()
+                    .Match(element.GetProperty("embeds")[0].GetProperty("description").GetString() ?? "").Groups[1]
+                    .Value;
+                string image = ParseImage(element);
+                string name = element.GetProperty("embeds")[0].GetProperty("author").GetProperty("name").GetString() ?? "";
+                DateTimeOffset timestamp = default;
+                if (element.GetProperty("embeds")[0].TryGetProperty("timestamp", out JsonElement timestampJson))
+                    timestamp = timestampJson.GetDateTimeOffset();
+                Quote? quote = await db.quotes.FirstOrDefaultAsync(x =>
+                    x.createdAt == timestamp ||
+                    x.content != "" && x.content.Trim() == content.Trim() ||
+                    x.images != "" && image != "" && x.images.StartsWith(image) ||
+                    name.StartsWith(x.id.ToString() + ":") ||
+                    name == x.id.ToString() ||
+                    x.name != "" && name.EndsWith(x.name)
+                );
+                if (quote is null) {
+                    Log.Warning("[quote-import] Failed to import guess {Id}: quote is null", messageId);
+                    await FollowupAsync($"⚠️ Failed to import guess {channelId}/{messageId}! (Could not find quote)");
+                    return false;
+                }
+                db.Add(new Guess {
+                    messageId = messageId,
+                    guessedAt = guessedAt,
+                    userId = userId,
+                    guessId = correct ? quote.authorId : timeout || showedId == quote.authorId ? 0 : showedId,
+                    quote = quote
+                });
+                return true;
+            }
+            catch (Exception ex) {
+                Log.Warning(ex, "[quote-import] Failed to import guess {Id}", messageId);
+                await FollowupAsync($"⚠️ Failed to import guess {channelId}/{messageId}! (unknown error)");
+                return false;
+            }
+        }
+
+        private static string ParseImage(JsonElement element) {
+            if (!element.GetProperty("embeds")[0].TryGetProperty("image", out JsonElement imageJson))
+                return "";
+            string image = imageJson.GetProperty("url").GetString() ?? "";
+            int index = image.IndexOf('?');
+            if (index != -1)
+                image = image[..index];
+            return image;
+        }
+
+        private static bool TryParseShowedId(JsonElement element, Dictionary<string, ulong> nameToId, out ulong showedId) {
+            showedId = 0;
+            Match? showedIdMatch = ShowedIdRegex().Matches(element.GetProperty("content").GetString() ?? "")
+                .LastOrDefault();
+            if (showedIdMatch is not null && showedIdMatch.Success && showedIdMatch.Groups[1].Success) {
+                showedId = ulong.Parse(showedIdMatch.Groups[1].ValueSpan);
+            }
+            else {
+                string? showedName = ShowedNameRegex().Matches(element.GetProperty("content").GetString() ?? "")
+                    .LastOrDefault()?.Groups[1].Value;
+                if (showedName is null || !nameToId.TryGetValue(showedName, out showedId))
+                    return false;
+            }
+            return true;
+        }
+
+        [GeneratedRegex("(?:by|not by|not) <@(.*?)>")]
+        private static partial Regex ShowedIdRegex();
+
+        [GeneratedRegex("(?:by|not by|not) [`*](.*?)[`*]")]
+        private static partial Regex ShowedNameRegex();
+
+        [GeneratedRegex(@"(.*)(?:\n\n?)", RegexOptions.Singleline)]
+        private static partial Regex ContentRegex();
+    }
+
     private readonly record struct UberBotQuote
         (string id, string nick, string channel, string messageId, string text, long time);
 
@@ -158,6 +378,9 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             await ModifyOriginalResponseAsync(prop =>
                 prop.Content = $"Imported {importedQuotes} quotes from {attachment.Filename}.");
         }
+
+        // stupid idiot.
+        // ReSharper disable once CognitiveComplexity
         private async Task<bool> ImportSingle(UberBotQuote oldQuote) {
             (string idStr, string nick, string channelName, string messageIdStr, string text, long time) = oldQuote;
             if (!int.TryParse(idStr, out int id)) {

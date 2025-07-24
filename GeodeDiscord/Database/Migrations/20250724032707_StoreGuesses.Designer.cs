@@ -3,6 +3,7 @@ using System;
 using GeodeDiscord.Database;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GeodeDiscord.Database.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250724032707_StoreGuesses")]
+    partial class StoreGuesses
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.7");
@@ -42,7 +45,7 @@ namespace GeodeDiscord.Database.Migrations
 
                     b.HasIndex("userId");
 
-                    b.ToTable("guesses", (string)null);
+                    b.ToTable("guesses");
                 });
 
             modelBuilder.Entity("GeodeDiscord.Database.Entities.Quote", b =>
@@ -98,7 +101,7 @@ namespace GeodeDiscord.Database.Migrations
 
                     b.HasIndex("name");
 
-                    b.ToTable("quotes", (string)null);
+                    b.ToTable("quotes");
                 });
 
             modelBuilder.Entity("GeodeDiscord.Database.Entities.StickyRole", b =>
@@ -115,7 +118,7 @@ namespace GeodeDiscord.Database.Migrations
 
                     b.HasIndex("userId");
 
-                    b.ToTable("stickyRoles", (string)null);
+                    b.ToTable("stickyRoles");
                 });
 
             modelBuilder.Entity("GeodeDiscord.Database.Entities.Guess", b =>
