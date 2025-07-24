@@ -5,7 +5,7 @@ WORKDIR /app
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS premigrations
 ENV PATH="$PATH:/root/.dotnet/tools"
 RUN dotnet tool install --global dotnet-ef
-RUN dotnet tool update dotnet-ef
+RUN dotnet tool update --global dotnet-ef
 
 FROM premigrations AS build
 ARG BUILD_CONFIGURATION=Release
