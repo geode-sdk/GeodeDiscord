@@ -127,8 +127,15 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         ) as SocketMessageComponent;
         ulong guessId = ulong.Parse(interaction?.Data.CustomId["guess/guess-button:".Length..] ?? "0");
 
-        int prevMaxStreak = await QueryStreaks(db, Context.User.Id).Where(x => x.isCorrect).MaxAsync(x => x.count);
-        Streak? prevStreak = await QueryStreaks(db, Context.User.Id).OrderBy(x => x.id).LastOrDefaultAsync();
+        int prevMaxStreak = await QueryStreaks(db, Context.User.Id)
+            .Where(x => x.isCorrect)
+            .Select(x => x.count)
+            .Append(0)
+            .MaxAsync();
+
+        Streak? prevStreak = await QueryStreaks(db, Context.User.Id)
+            .OrderBy(x => x.id)
+            .LastOrDefaultAsync();
 
         db.Add(new Guess {
             messageId = response.Id,
