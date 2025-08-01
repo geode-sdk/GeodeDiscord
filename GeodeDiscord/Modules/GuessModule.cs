@@ -129,9 +129,7 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
 
         int prevMaxStreak = await QueryStreaks(db, Context.User.Id)
             .Where(x => x.isCorrect)
-            .Select(x => x.count)
-            .DefaultIfEmpty(0)
-            .MaxAsync();
+            .MaxAsync(x => (int?)x.count) ?? 0;
 
         Streak? prevStreak = await QueryStreaks(db, Context.User.Id)
             .OrderBy(x => x.id)
