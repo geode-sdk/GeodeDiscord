@@ -131,9 +131,12 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             .Where(x => x.isCorrect)
             .MaxAsync(x => (int?)x.count) ?? 0;
 
-        Streak? prevStreak = await QueryStreaks(db, Context.User.Id)
-            .OrderBy(x => x.id)
-            .LastOrDefaultAsync();
+        int prevStreak = await QueryStreaks(db, Context.User.Id)
+            .OrderByDescending(x => x.id)
+            .Take(1)
+            .Where(x => x.isCorrect)
+            .Select(x => (int?)x.count)
+            .FirstOrDefaultAsync() ?? 0;
 
         db.Add(new Guess {
             messageId = response.Id,
@@ -160,15 +163,15 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         GuessResult result = guessId == 0 || interaction is null ? GuessResult.Timeout :
             quote.authorId == guessId ? GuessResult.Correct : GuessResult.Incorrect;
 
-        int streak = prevStreak?.isCorrect == (result == GuessResult.Correct) ? prevStreak.count + 1 : 0;
-        int maxStreak = result == GuessResult.Correct ? Math.Max(streak, prevMaxStreak) : prevMaxStreak;
+        int streak = result == GuessResult.Correct ? prevStreak + 1 : 0;
+        int maxStreak = Math.Max(streak, prevMaxStreak);
         bool newBestStreak = maxStreak > prevMaxStreak;
 
         StringBuilder content = new("### ");
 
         // emote
         content.Append(result switch {
-            GuessResult.Timeout or GuessResult.Incorrect when prevStreak is { isCorrect: true, count: > 1 } => "💔 ",
+            GuessResult.Timeout or GuessResult.Incorrect when prevStreak > 1 => "💔 ",
             GuessResult.Timeout => "🕛 ",
             GuessResult.Incorrect => "❌ ",
             GuessResult.Correct when streak > 1 && newBestStreak => "🔥 ",
