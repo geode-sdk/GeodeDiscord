@@ -24,7 +24,7 @@ RUN dotnet publish "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION -o /app/publish
 FROM base AS migrations
 WORKDIR /app
 COPY --from=efbundle /app/ef .
-ENTRYPOINT ["efbundle"]
+ENTRYPOINT ["./efbundle"]
 
 FROM base AS app
 WORKDIR /app
