@@ -186,4 +186,28 @@ public static class Util {
         Log.Information("Added channel {Channel} ({Id}) to extra cache", channel?.Name, id);
         return channel;
     }
+
+    public static string FormatTimeSpan(TimeSpan span) {
+        StringBuilder str = new();
+        bool negative = span.Ticks < 0;
+        span = span.Duration();
+        if (negative) {
+            str.Append('-');
+        }
+        if (span.Days > 0) {
+            str.Append(span.Days);
+            str.Append("d ");
+        }
+        if (span.Days > 0 || span.Hours > 0) {
+            str.Append(span.Hours);
+            str.Append("h ");
+        }
+        if (span.Days > 0 || span.Hours > 0 || span.Minutes > 0) {
+            str.Append(span.Minutes);
+            str.Append("m ");
+        }
+        str.Append($"{span.TotalSeconds - Math.Truncate(span.TotalSeconds):F1}");
+        str.Append('s');
+        return str.ToString();
+    }
 }

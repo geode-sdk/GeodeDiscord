@@ -299,6 +299,7 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         });
     }
 
+    // TODO: make this whole stats thing better formatted and show more interesting statistics and stuff
     [SlashCommand("stats", "Shows some quote related stats."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task GetStats(IUser? user = null) {
         await DeferAsync();
@@ -322,6 +323,33 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             .Where(x => x.userId == user.Id && x.quote.authorId == user.Id && x.guessId != x.quote.authorId)
             .CountAsync();
 
+        TimeSpan totalTime = TimeSpan.FromTicks(await db.guesses
+            .Where(x => x.userId == user.Id)
+            .Select(x => new { x.startedAt, x.guessedAt })
+            .AsAsyncEnumerable()
+            .Select(x => (x.guessedAt - x.startedAt).Ticks)
+            .SumAsync());
+
+        double averageSeconds = total == 0 ? 0.0 : await db.guesses
+            .Where(x => x.userId == user.Id)
+            .Select(x => new { x.startedAt, x.guessedAt })
+            .AsAsyncEnumerable()
+            .Select(x => (x.guessedAt - x.startedAt).TotalSeconds)
+            .AverageAsync();
+        double averageCorrectSeconds = correct == 0 ? 0.0 : await db.guesses
+            .Where(x => x.userId == user.Id && x.guessId == x.quote.authorId)
+            .Select(x => new { x.startedAt, x.guessedAt })
+            .AsAsyncEnumerable()
+            .Select(x => (x.guessedAt - x.startedAt).TotalSeconds)
+            .AverageAsync();
+
+        double averageCorrectOtherSeconds = correctOther == 0 ? 0.0 : await db.guesses
+            .Where(x => x.quote.authorId == user.Id && x.guessId == x.quote.authorId)
+            .Select(x => new { x.startedAt, x.guessedAt })
+            .AsAsyncEnumerable()
+            .Select(x => (x.guessedAt - x.startedAt).TotalSeconds)
+            .AverageAsync();
+
         if (quotedCount > 0)
             stats.AppendLine($"- Has been quoted **{quotedCount}** time{Suffix(quotedCount, "s")}.");
         if (total > 0) {
@@ -335,15 +363,22 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             }
             if (maxStreak > 1)
                 stats.AppendLine($"- Achieved a maximum streak of **{maxStreak}** correct guesses in a row.");
+
+            stats.AppendLine($"- In total spent **{Util.FormatTimeSpan(totalTime)}** on guessing.");
+            stats.AppendLine($"- On average takes **{averageSeconds:F1}s** per guess...");
+            if (correct > 0) {
+                stats.AppendLine($"  - ...and **{averageCorrectSeconds:F1}s** per correct guess.");
+            }
         }
         if (totalOther > 0) {
             stats.AppendLine($"- Has been the correct guess **{totalOther}** time{Suffix(totalOther, "s")}...");
             if (correctOther > 0) {
                 float correctPercent = (float)correctOther / totalOther * 100.0f;
                 if (correctPercent > 60.0f)
-                    stats.AppendLine($"  - ...and guessed correctly **{correctOther}** time{Suffix(correctOther, "s")} (**{correctPercent:F1}%**).");
+                    stats.AppendLine($"  - ...and guessed correctly **{correctOther}** time{Suffix(correctOther, "s")} (**{correctPercent:F1}%**)...");
                 else
-                    stats.AppendLine($"  - ...but only guessed correctly **{correctOther}** time{Suffix(correctOther, "s")} (**{correctPercent:F1}%**).");
+                    stats.AppendLine($"  - ...but only guessed correctly **{correctOther}** time{Suffix(correctOther, "s")} (**{correctPercent:F1}%**)...");
+                stats.AppendLine($"  - ...which on average takes **{averageCorrectOtherSeconds:F1}s**.");
             }
             else {
                 stats.AppendLine("  - ...but never guessed correctly.");
