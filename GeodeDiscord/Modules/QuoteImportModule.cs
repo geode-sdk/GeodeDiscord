@@ -317,30 +317,36 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
         [GeneratedRegex(@"(.*)(?:\n\n?)", RegexOptions.Singleline)]
         private static partial Regex ContentRegex();
 
+        private readonly Dictionary<ulong, IMessage> _messageCache = [];
+
         [SlashCommand("import-timestamps", "Import timestamps for all guesses in the specified channel."),
          CommandContextType(InteractionContextType.Guild),
          UsedImplicitly]
-        private async Task ImportTimestamps(IMessageChannel channel) {
+        private async Task ImportTimestamps(IMessageChannel channel, ulong cacheStartMessageId) {
             await DeferAsync();
             Log.Information("[quote-import] Beginning guess timestamps import from {Channel}", channel.Id);
 
             List<Guess> guesses = await db.guesses
                 .Where(x => x.startedAt == default(DateTimeOffset))
+                .OrderBy(x => x.messageId)
                 .ToListAsync();
 
-            Dictionary<ulong, IMessage> messageCache = [];
+            // cache 1000 messages after the specified one
+            foreach (IMessage msg in await channel.GetMessagesAsync(cacheStartMessageId, Direction.After).Take(10).FlattenAsync()) {
+                _messageCache.TryAdd(msg.Id, msg);
+            }
 
             int guessCount = guesses.Count;
             int imported = 0;
             foreach (Guess guess in guesses) {
                 try {
-                    if (imported % 10 == 0 || guessCount % 10 == 0) {
+                    if ((guesses.Count - guessCount + imported) % 10 == 0) {
                         await ModifyOriginalResponseAsync(prop =>
                             prop.Content = $"Importing guess timestamps from <#{channel.Id}>: {imported}/{guessCount} guesses"
                         );
                     }
 
-                    IMessage? message = messageCache.GetValueOrDefault(guess.messageId);
+                    IMessage? message = _messageCache.GetValueOrDefault(guess.messageId);
                     if (message is null) {
                         message = await channel.GetMessageAsync(guess.messageId);
                         if (message is null) {
@@ -349,7 +355,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                         }
 
                         foreach (IMessage msg in await channel.GetMessagesAsync(message, Direction.After).FirstAsync()) {
-                            messageCache.TryAdd(msg.Id, msg);
+                            _messageCache.TryAdd(msg.Id, msg);
                         }
                     }
 
@@ -412,6 +418,14 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             await ModifyOriginalResponseAsync(prop =>
                 prop.Content = $"Imported {imported}/{guessCount} guess timestamps from <#{channel.Id}>."
             );
+        }
+
+        [SlashCommand("clear-message-cache", "Clear message cache of import-timestamps."),
+         CommandContextType(InteractionContextType.Guild),
+         UsedImplicitly]
+        private async Task ClearMessageCache() {
+            _messageCache.Clear();
+            await FollowupAsync("Cleared message cache.");
         }
     }
 
