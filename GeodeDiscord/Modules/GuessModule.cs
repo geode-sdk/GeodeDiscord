@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using System.Text;
+﻿using System.Text;
 using System.Text.RegularExpressions;
 using Discord;
 using Discord.Interactions;
@@ -132,11 +131,13 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             .Select(x => (int?)x.count)
             .FirstOrDefaultAsync() ?? 0;
 
-        DateTimeOffset guessedAt = interaction?.CreatedAt ?? response.CreatedAt + TimeSpan.FromSeconds(60d);
-        TimeSpan time = guessedAt - response.CreatedAt;
+        DateTimeOffset startedAt = response.CreatedAt;
+        DateTimeOffset guessedAt = interaction?.CreatedAt ?? startedAt + TimeSpan.FromSeconds(60d);
+        TimeSpan time = guessedAt - startedAt;
 
         db.Add(new Guess {
             messageId = response.Id,
+            startedAt = startedAt,
             guessedAt = guessedAt,
             userId = Context.User.Id,
             guessId = guessId,

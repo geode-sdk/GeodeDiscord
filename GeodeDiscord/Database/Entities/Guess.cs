@@ -7,6 +7,7 @@ namespace GeodeDiscord.Database.Entities;
 public record Guess {
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
     public required ulong messageId { get; init; }
+    public required DateTimeOffset startedAt { get; init; }
     public required DateTimeOffset guessedAt { get; init; }
     public required ulong userId { get; init; }
     public required ulong guessId { get; init; }
