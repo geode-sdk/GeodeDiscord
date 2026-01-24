@@ -1,4 +1,5 @@
-﻿using Discord;
+﻿using System.Text;
+using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 
@@ -170,6 +171,42 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         );
         if (quote.extraAttachments != 0)
             await ReplyAsync(messageReference: Util.QuoteToForward(quote));
+    }
+
+    [SlashCommand("info", "Gets all stored information for a quote with the specified ID."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
+    public async Task Info([Autocomplete(typeof(QuoteAutocompleteHandler))] int id) {
+        Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
+        if (quote is null) {
+            await RespondAsync("❌ Quote not found!", ephemeral: true);
+            return;
+        }
+        StringBuilder builder = new();
+        string[] images = quote.images.Split('|');
+        // defer in case getting the channel and all the users is slow
+        await DeferAsync();
+        IChannel? channel = await Util.GetChannelAsync(Context.Client, quote.channelId);
+        IUser? quoter = await Util.GetUserAsync(Context.Client, quote.quoterId);
+        IUser? author = await Util.GetUserAsync(Context.Client, quote.authorId);
+        IUser? replyAuthor = await Util.GetUserAsync(Context.Client, quote.replyAuthorId);
+        builder.AppendLine($"- Message: `{quote.messageId}` {quote.jumpUrl}");
+        builder.AppendLine($"- ID: `{quote.id}`");
+        builder.AppendLine($"- Name: `{quote.name}`");
+        builder.AppendLine($"- Channel: `{quote.channelId}` `#{channel?.Name ?? "<unknown>"}` <#{quote.channelId}>");
+        builder.AppendLine($"- Created at: `{quote.createdAt}` <t:{quote.createdAt.ToUnixTimeSeconds()}:f>");
+        builder.AppendLine($"- Last edited at: `{quote.lastEditedAt}` <t:{quote.lastEditedAt.ToUnixTimeSeconds()}:f>");
+        builder.AppendLine($"- Quoter: `{quote.quoterId}` `{quoter?.GlobalName ?? "<unknown>"}` `@{quoter?.Username ?? "<unknown>"}` <@{quote.quoterId}>");
+        builder.AppendLine($"- Author: `{quote.authorId}` `{author?.GlobalName ?? "<unknown>"}` `@{author?.Username ?? "<unknown>"}` <@{quote.authorId}>");
+        builder.AppendLine($"- Reply author: `{quote.replyAuthorId}` `{replyAuthor?.GlobalName ?? "<unknown>"}` `@{replyAuthor?.Username ?? "<unknown>"}` <@{quote.replyAuthorId}>");
+        builder.AppendLine("- Images:");
+        foreach (string image in images) {
+            builder.AppendLine($"  - `{image}` {image}");
+        }
+        builder.AppendLine($"- Extra attachments: `{quote.extraAttachments}`");
+        builder.AppendLine($"- Content: `{quote.content}`");
+        await FollowupAsync(
+            text: builder.ToString(),
+            allowedMentions: AllowedMentions.None
+        );
     }
 
     [ComponentInteraction("guess-again"), UsedImplicitly]
