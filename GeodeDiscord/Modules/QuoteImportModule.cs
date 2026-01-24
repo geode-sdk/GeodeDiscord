@@ -317,7 +317,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
         [GeneratedRegex(@"(.*)(?:\n\n?)", RegexOptions.Singleline)]
         private static partial Regex ContentRegex();
 
-        private readonly Dictionary<ulong, IMessage> _messageCache = [];
+        private readonly Dictionary<ulong, IMessage?> _messageCache = [];
 
         [SlashCommand("import-timestamps", "Import timestamps for all guesses in the specified channel."),
          CommandContextType(InteractionContextType.Guild),
@@ -339,81 +339,22 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 _messageCache.TryAdd(msg.Id, msg);
             }
 
+            int totalGuessCount = guesses.Count;
             int guessCount = guesses.Count;
             int imported = 0;
-            foreach (Guess guess in guesses) {
-                try {
-                    if ((guesses.Count - guessCount + imported) % 10 == 0) {
-                        await ModifyOriginalResponseAsync(prop =>
-                            prop.Content = $"Importing guess timestamps from <#{channel.Id}>: {imported}/{guessCount} guesses"
-                        );
-                    }
-
-                    IMessage? message = _messageCache.GetValueOrDefault(guess.messageId);
-                    if (message is null) {
-                        message = await channel.GetMessageAsync(guess.messageId);
-                        if (message is null) {
-                            guessCount--;
-                            continue;
-                        }
-
-                        foreach (IMessage msg in await channel.GetMessagesAsync(message, Direction.After).FirstAsync()) {
-                            _messageCache.TryAdd(msg.Id, msg);
-                        }
-                    }
-
-                    DateTimeOffset startedAt;
-                    DateTimeOffset guessedAt;
-                    if (message.EditedTimestamp is null) {
-                        IMessage? reference = _messageCache.GetValueOrDefault(message.Reference.MessageId.GetValueOrDefault(0));
-                        if (reference is null) {
-                            reference = await channel.GetMessageAsync(message.Reference.MessageId.GetValueOrDefault(0));
-                            if (reference is null) {
-                                Log.Warning("[quote-import] Failed to import guess {Id} timestamps", guess.messageId);
-                                await FollowupAsync($"⚠️ Failed to import guess {guess.messageId} timestamps! (message is not edited and isn't a reply)");
-                                continue;
-                            }
-
-                            foreach (IMessage msg in await channel.GetMessagesAsync(reference, Direction.After).FirstAsync()) {
-                                _messageCache.TryAdd(msg.Id, msg);
-                            }
-                        }
-
-                        if (!reference.Content.Contains("Who said this?", StringComparison.OrdinalIgnoreCase)) {
-                            Log.Warning("[quote-import] Inferred guess {Id} start ({StartId}) doesn't contain \"Who said this?\"", guess.messageId, reference.Id);
-                            await FollowupAsync($"⚠️ Inferred guess {guess.messageId} start ({reference.Id}) doesn't contain \"Who said this?\"!");
-                        }
-
-                        startedAt = reference.Timestamp;
-                        guessedAt = message.Timestamp;
-                    }
-                    else {
-                        startedAt = message.Timestamp;
-                        guessedAt = message.EditedTimestamp.GetValueOrDefault();
-                    }
-
-                    // check if stored guessed at is closer to inferred guessed at than to inferred guessed at
-                    // if it is, we don't need to override it as it's probably more accurate
-                    TimeSpan distToStarted = (guess.guessedAt - startedAt).Duration();
-                    TimeSpan distToGuessed = (guess.guessedAt - guessedAt).Duration();
-                    if (distToGuessed < distToStarted) {
-                        // stored guessed at is closer to inferred guessed at than to started at
-                        // so it's probably more accurate than what we inferred from message timestamps
-                        guessedAt = guess.guessedAt;
-                    }
-
-                    db.Remove(guess);
-                    db.Update(guess with {
-                        startedAt = startedAt,
-                        guessedAt = guessedAt
-                    });
-
-                    imported++;
+            HashSet<ulong> skip = [];
+            while (guesses.Count > 0) {
+                Guess first = guesses.First();
+                await ImportSingleGuessLocal(first);
+                guesses.RemoveAt(0);
+                foreach (Guess guess in guesses.Where(x => _messageCache.ContainsKey(x.messageId))) {
+                    await ImportSingleGuessLocal(guess);
+                    skip.Add(guess.messageId);
                 }
-                catch (Exception ex) {
-                    Log.Warning(ex, "[quote-import] Failed to import guess {Id} timestamps", guess.messageId);
-                    await FollowupAsync($"⚠️ Failed to import guess {guess.messageId} timestamps! (unknown error)");
-                }
+                if (skip.Count == 0)
+                    continue;
+                guesses.RemoveAll(x => skip.Contains(x.messageId));
+                skip.Clear();
             }
 
             try { await db.SaveChangesAsync(); }
@@ -430,6 +371,93 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             await ModifyOriginalResponseAsync(prop =>
                 prop.Content = $"Imported {imported}/{guessCount} guess timestamps from <#{channel.Id}>."
             );
+
+            return;
+
+            async Task ImportSingleGuessLocal(Guess guess) {
+                try {
+                    if ((totalGuessCount - guessCount + imported) % 10 == 0) {
+                        await ModifyOriginalResponseAsync(prop =>
+                            prop.Content = $"Importing guess timestamps from <#{channel.Id}>: {imported}/{guessCount} guesses"
+                        );
+                    }
+
+                    int result = await ImportSingleGuessTimestamps(channel, guess);
+                    if (result <= 0) {
+                        guessCount += result;
+                        return;
+                    }
+                    imported += result;
+                }
+                catch (Exception ex) {
+                    Log.Warning(ex, "[quote-import] Failed to import guess {Id} timestamps", guess.messageId);
+                    await FollowupAsync($"⚠️ Failed to import guess {guess.messageId} timestamps! (unknown error)");
+                }
+            }
+        }
+
+        private async Task<int> ImportSingleGuessTimestamps(IMessageChannel channel, Guess guess) {
+            if (!_messageCache.TryGetValue(guess.messageId, out IMessage? message)) {
+                message = await channel.GetMessageAsync(guess.messageId);
+                _messageCache.TryAdd(guess.messageId, message);
+                if (message is not null) {
+                    foreach (IMessage msg in await channel.GetMessagesAsync(message, Direction.After).FirstAsync()) {
+                        _messageCache.TryAdd(msg.Id, msg);
+                    }
+                }
+            }
+            if (message is null) {
+                return -1;
+            }
+
+            DateTimeOffset startedAt;
+            DateTimeOffset guessedAt;
+            if (message.EditedTimestamp is null) {
+                ulong refId = message.Reference.MessageId.GetValueOrDefault(0);
+                if (!_messageCache.TryGetValue(refId, out IMessage? reference)) {
+                    reference = await channel.GetMessageAsync(refId);
+                    _messageCache.TryAdd(refId, reference);
+                    if (reference is not null) {
+                        foreach (IMessage msg in await channel.GetMessagesAsync(reference, Direction.After).FirstAsync())
+                            _messageCache.TryAdd(msg.Id, msg);
+                    }
+                }
+                if (reference is null) {
+                    Log.Warning("[quote-import] Failed to import guess {Id} timestamps", guess.messageId);
+                    await FollowupAsync($"⚠️ Failed to import guess {guess.messageId} timestamps! (message is not edited and isn't a reply)");
+                    return 0;
+                }
+
+                if (!reference.Content.Contains("Who said this?", StringComparison.OrdinalIgnoreCase)) {
+                    Log.Warning("[quote-import] Inferred guess {Id} start ({StartId}) doesn't contain \"Who said this?\"", guess.messageId, reference.Id);
+                    await FollowupAsync($"⚠️ Inferred guess {guess.messageId} start ({reference.Id}) doesn't contain \"Who said this?\"!");
+                }
+
+                startedAt = reference.Timestamp;
+                guessedAt = message.Timestamp;
+            }
+            else {
+                startedAt = message.Timestamp;
+                guessedAt = message.EditedTimestamp.GetValueOrDefault();
+            }
+
+            // check if stored guessed at is closer to inferred guessed at than to inferred guessed at
+            // if it is, we don't need to override it as it's probably more accurate
+            TimeSpan distToStarted = (guess.guessedAt - startedAt).Duration();
+            TimeSpan distToGuessed = (guess.guessedAt - guessedAt).Duration();
+            if (distToGuessed < distToStarted) {
+                // stored guessed at is closer to inferred guessed at than to started at
+                // so it's probably more accurate than what we inferred from message timestamps
+                guessedAt = guess.guessedAt;
+            }
+
+            db.Remove(guess);
+            db.Update(guess with {
+                startedAt = startedAt,
+                guessedAt = guessedAt
+            });
+
+            return 1;
         }
 
         [SlashCommand("clear-message-cache", "Clear message cache of import-timestamps."),
