@@ -12,6 +12,7 @@ WORKDIR "/src/GeodeDiscord"
 RUN dotnet build "GeodeDiscord.csproj" -c $BUILD_CONFIGURATION --no-restore
 
 FROM build AS migrations
+ARG GEODE_BOT_DB_PATH
 ARG BUILD_CONFIGURATION=Release
 ENV PATH="$PATH:/root/.dotnet/tools"
 RUN dotnet tool install --global dotnet-ef --no-cache
