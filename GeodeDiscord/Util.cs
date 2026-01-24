@@ -117,7 +117,7 @@ public static class Util {
         StringBuilder description = new();
         description.AppendLine(quote.content);
         description.AppendLine();
-        description.AppendLine("\\- ????? in ????? by ?????");
+        description.AppendLine("\\- ????? in `#?????`");
 
         string[] images = quote.images.Split('|');
 
@@ -126,7 +126,9 @@ public static class Util {
             footer.Append($"{quote.extraAttachments.ToString("+0;-#")} attachment");
             if (quote.extraAttachments != 1)
                 footer.Append('s');
+            footer.AppendLine();
         }
+        footer.Append("?????");
 
         yield return new EmbedBuilder()
             .WithAuthor("?????")
