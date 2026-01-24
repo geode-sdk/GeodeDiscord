@@ -328,8 +328,10 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
 
             ulong startId = ulong.Parse(firstGuessMessageId);
             List<Guess> guesses = await db.guesses
-                .Where(x => x.startedAt == default(DateTimeOffset) && x.messageId >= startId)
+                .Where(x => x.startedAt == default(DateTimeOffset))
+                .AsAsyncEnumerable()
                 .OrderBy(x => x.messageId)
+                .Where(x => x.messageId >= startId)
                 .ToListAsync();
 
             // cache 1000 messages after the specified one
