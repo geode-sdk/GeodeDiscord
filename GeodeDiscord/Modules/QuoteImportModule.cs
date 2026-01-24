@@ -334,9 +334,11 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             int imported = 0;
             foreach (Guess guess in guesses) {
                 try {
-                    await ModifyOriginalResponseAsync(prop =>
-                        prop.Content = $"Importing guess timestamps from <#{channel.Id}>: {imported}/{guessCount} guesses"
-                    );
+                    if (imported % 10 == 0) {
+                        await ModifyOriginalResponseAsync(prop =>
+                            prop.Content = $"Importing guess timestamps from <#{channel.Id}>: {imported}/{guessCount} guesses"
+                        );
+                    }
 
                     IMessage? message = messageCache.GetValueOrDefault(guess.messageId);
                     if (message is null) {
