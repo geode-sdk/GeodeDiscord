@@ -132,9 +132,12 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             .Select(x => (int?)x.count)
             .FirstOrDefaultAsync() ?? 0;
 
+        DateTimeOffset guessedAt = interaction?.CreatedAt ?? response.CreatedAt + TimeSpan.FromSeconds(60d);
+        TimeSpan time = guessedAt - response.CreatedAt;
+
         db.Add(new Guess {
             messageId = response.Id,
-            guessedAt = interaction?.CreatedAt ?? response.CreatedAt + TimeSpan.FromSeconds(60d),
+            guessedAt = guessedAt,
             userId = Context.User.Id,
             guessId = guessId,
             quote = quote
@@ -205,7 +208,7 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         content.Append($"-# You have made **{correct}**/**{total}** (**{correctPercent:F1}%**) correct guesses in total");
         if (!(streak > 1 && newBestStreak))
             content.Append($" with a best streak of **{maxStreak}** in a row");
-        content.AppendLine(".");
+        content.AppendLine($". This guess took **{time.TotalSeconds:F1}s**.");
         if (saveFail) {
             // hopefully nobody ever sees this :-)
             content.AppendLine("-# ⚠️ Failed to save stats, sorry... :<");
