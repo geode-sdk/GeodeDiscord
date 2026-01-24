@@ -10,10 +10,11 @@ using Serilog.Events;
 namespace GeodeDiscord;
 
 public static class Util {
-    private static List<string> GetMessageImages(IMessage message) => message.Attachments
-        .Where(att => !att.IsSpoiler() && att.ContentType.StartsWith("image/", StringComparison.Ordinal))
+    private static List<IAttachment> GetEmbeddableAttachments(IMessage message) => message.Attachments
+        .Where(att => !att.IsSpoiler() &&
+            (att.ContentType.StartsWith("image/", StringComparison.Ordinal) ||
+                att.ContentType.StartsWith("video/", StringComparison.Ordinal)))
         .Take(10)
-        .Select(att => att.Url)
         .ToList();
 
     private static async Task<IMessage?> GetReplyAsync(IMessage message) {
@@ -50,8 +51,8 @@ public static class Util {
                 continue;
             }
 
-            List<string> images = GetMessageImages(message);
-            int extraAttachments = message.Attachments.Count - images.Count;
+            List<IAttachment> attachments = GetEmbeddableAttachments(message);
+            int extraAttachments = message.Attachments.Count - attachments.Count;
             ulong replyAuthorId = (await GetReplyAsync(message))?.Author.Id ?? 0;
             return new Quote {
                 id = id,
@@ -64,7 +65,8 @@ public static class Util {
                 authorId = message.Author.Id,
                 replyAuthorId = replyAuthorId,
                 jumpUrl = message.Channel is null ? null : message.GetJumpUrl(),
-                images = string.Join('|', images),
+                images = string.Join('|', attachments.Where(x => x.ContentType.StartsWith("image/", StringComparison.Ordinal)).Select(x => x.Url)),
+                videos = string.Join('|', attachments.Where(x => x.ContentType.StartsWith("video/", StringComparison.Ordinal)).Select(x => x.Url)),
                 extraAttachments = extraAttachments,
                 content = message.Content
             };
@@ -86,13 +88,18 @@ public static class Util {
 
         string[] images = quote.images.Split('|');
 
-        StringBuilder footer = new();
-        if (quote.extraAttachments != 0) {
-            footer.Append($"{quote.extraAttachments.ToString("+0;-#")} attachment");
-            if (quote.extraAttachments != 1)
-                footer.Append('s');
-            footer.AppendLine();
+        List<string> extraAttachments = [];
+        if (!string.IsNullOrEmpty(quote.videos)) {
+            string[] videos = quote.videos.Split('|');
+            extraAttachments.Add($"{videos.Length:+0;-#} video{(videos.Length != 1 ? "s" : "")}");
         }
+        if (quote.extraAttachments != 0) {
+            extraAttachments.Add($"{quote.extraAttachments:+0;-#} attachment{(quote.extraAttachments != 1 ? "s" : "")}");
+        }
+
+        StringBuilder footer = new();
+        if (extraAttachments.Count != 0)
+            footer.AppendLine(string.Join(", ", extraAttachments));
         footer.Append(quoter?.GlobalName ?? "<unknown>");
 
         yield return new EmbedBuilder()

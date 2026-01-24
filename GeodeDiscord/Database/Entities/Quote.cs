@@ -25,6 +25,7 @@ public record Quote {
 
     // attachments
     public required string images { get; init; }
+    public required string videos { get; init; }
     public required int extraAttachments { get; init; }
 
     // content

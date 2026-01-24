@@ -154,8 +154,15 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
             allowedMentions: AllowedMentions.None,
             embeds: await Util.QuoteToEmbeds(Context.Client, quote).ToArrayAsync()
         );
-        if (quote.extraAttachments != 0)
+        if (quote.extraAttachments != 0) {
             await ReplyAsync(messageReference: Util.QuoteToForward(quote));
+        }
+        else if (!string.IsNullOrEmpty(quote.videos)) {
+            await ReplyAsync(
+                text: quote.videos.Replace('|', '\n'),
+                allowedMentions: AllowedMentions.None
+            );
+        }
     }
 
     [SlashCommand("get", "Gets a quote with the specified ID."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
@@ -169,8 +176,15 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
             allowedMentions: AllowedMentions.None,
             embeds: await Util.QuoteToEmbeds(Context.Client, quote).ToArrayAsync()
         );
-        if (quote.extraAttachments != 0)
+        if (quote.extraAttachments != 0) {
             await ReplyAsync(messageReference: Util.QuoteToForward(quote));
+        }
+        else if (!string.IsNullOrEmpty(quote.videos)) {
+            await ReplyAsync(
+                text: quote.videos.Replace('|', '\n'),
+                allowedMentions: AllowedMentions.None
+            );
+        }
     }
 
     [SlashCommand("info", "Gets all stored information for a quote with the specified ID."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]

@@ -468,6 +468,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 jumpUrl = string.IsNullOrWhiteSpace(channelName) ? null : $"#{channelName}",
 
                 images = "",
+                videos = "",
                 extraAttachments = 0,
 
                 content = text

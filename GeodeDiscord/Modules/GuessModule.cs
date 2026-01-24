@@ -102,6 +102,12 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             embeds: Util.QuoteToCensoredEmbeds(quote).ToArray(),
             components: components.Build()
         );
+        if (!string.IsNullOrEmpty(quote.videos)) {
+            await ReplyAsync(
+                text: quote.videos.Replace('|', '\n'),
+                allowedMentions: AllowedMentions.None
+            );
+        }
 
         SocketMessageComponent? interaction = await InteractionUtility.WaitForInteractionAsync(
             Context.Client,
