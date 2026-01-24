@@ -1,9 +1,10 @@
-﻿using System.Text;
+﻿using System.Collections.Concurrent;
+using System.Text;
 
 using Discord;
-
+using Discord.WebSocket;
 using GeodeDiscord.Database.Entities;
-
+using Serilog;
 using Serilog.Events;
 
 namespace GeodeDiscord;
@@ -70,20 +71,17 @@ public static class Util {
         }
     }
 
-    public static IEnumerable<Embed> QuoteToEmbeds(Quote quote) {
+    public static async IAsyncEnumerable<Embed> QuoteToEmbeds(DiscordSocketClient client, Quote quote) {
+        IChannel? channel = await GetChannelAsync(client, quote.channelId);
+        IUser? quoter = await GetUserAsync(client, quote.quoterId);
+
         StringBuilder description = new();
         description.AppendLine(quote.content);
         description.AppendLine();
         description.Append($"\\- <@{quote.authorId}>");
-        if (quote.replyAuthorId != 0) {
-            description.Append($" to <@{quote.replyAuthorId}>");
-        }
-        description.Append($" in {quote.jumpUrl ?? "<unknown>"}");
-        description.Append(quote.quoterId == 0 ? " by <unknown>" : $" by <@{quote.quoterId}>");
-        if (quote.createdAt != quote.lastEditedAt) {
-            description.AppendLine();
-            description.AppendLine();
-            description.Append($"Last edited <t:{quote.lastEditedAt.ToUnixTimeSeconds()}:f>");
+        description.Append($" in `#{channel?.Name ?? "<unknown>"}`");
+        if (!string.IsNullOrWhiteSpace(quote.jumpUrl)) {
+            description.Append($" [>>]({quote.jumpUrl})");
         }
 
         string[] images = quote.images.Split('|');
@@ -93,7 +91,9 @@ public static class Util {
             footer.Append($"{quote.extraAttachments.ToString("+0;-#")} attachment");
             if (quote.extraAttachments != 1)
                 footer.Append('s');
+            footer.AppendLine();
         }
+        footer.Append(quoter?.GlobalName ?? "<unknown>");
 
         yield return new EmbedBuilder()
             .WithAuthor(quote.GetFullName())
@@ -151,4 +151,30 @@ public static class Util {
         LogSeverity.Debug => LogEventLevel.Debug,
         _ => LogEventLevel.Information
     };
+
+    private static readonly ConcurrentDictionary<ulong, IUser?> extraUserCache = [];
+    public static async Task<IUser?> GetUserAsync(DiscordSocketClient client, ulong id) {
+        if (id == 0)
+            return null;
+        IUser? user = client.GetUser(id);
+        if (user is not null || extraUserCache.TryGetValue(id, out user))
+            return user;
+        user = await client.GetUserAsync(id);
+        extraUserCache[id] = user;
+        Log.Information("Added user {User} ({Username}, {Id}) to extra cache", user?.GlobalName, user?.Username, id);
+        return user;
+    }
+
+    private static readonly ConcurrentDictionary<ulong, IChannel?> extraChannelCache = [];
+    public static async Task<IChannel?> GetChannelAsync(DiscordSocketClient client, ulong id) {
+        if (id == 0)
+            return null;
+        IChannel? channel = client.GetChannel(id);
+        if (channel is not null || extraChannelCache.TryGetValue(id, out channel))
+            return channel;
+        channel = await client.GetChannelAsync(id);
+        extraChannelCache[id] = channel;
+        Log.Information("Added channel {Channel} ({Id}) to extra cache", channel?.Name, id);
+        return channel;
+    }
 }

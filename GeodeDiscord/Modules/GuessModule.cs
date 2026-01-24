@@ -17,20 +17,8 @@ namespace GeodeDiscord.Modules;
 
 [Group("guess", "Play guess with quotes!"), UsedImplicitly]
 public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
-    private static readonly ConcurrentDictionary<ulong, IUser?> extraUserCache = [];
-
-    private async Task<IUser?> GetUserAsync(ulong id) {
-        IUser? user = Context.Client.GetUser(id);
-        if (user is not null || extraUserCache.TryGetValue(id, out user))
-            return user;
-        user = await Context.Client.GetUserAsync(id);
-        extraUserCache[id] = user;
-        Log.Information("Added user {User} ({Username}, {Id}) to extra cache", user?.GlobalName, user?.Username, id);
-        return user;
-    }
-
     private async Task<string?> GetUserNameAsync(ulong id) {
-        IUser? user = await GetUserAsync(id);
+        IUser? user = await Util.GetUserAsync(Context.Client, id);
         return user?.GlobalName ?? user?.Username ?? null;
     }
 
@@ -217,7 +205,7 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             content.AppendLine("-# ⚠️ Failed to save stats, sorry... :<");
         }
 
-        Embed[] quoteEmbeds = Util.QuoteToEmbeds(quote).ToArray();
+        Embed[] quoteEmbeds = await Util.QuoteToEmbeds(Context.Client, quote).ToArrayAsync();
         await response.ModifyAsync(x => {
             x.Content = content.ToString();
             x.AllowedMentions = AllowedMentions.None;

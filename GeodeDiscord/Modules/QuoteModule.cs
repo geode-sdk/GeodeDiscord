@@ -45,7 +45,7 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
 
         await RespondAsync(
             GetAddMessageContent(quote, true, false),
-            GetAddMessageEmbeds(quote, true, false),
+            await GetAddMessageEmbeds(quote, true, false),
             allowedMentions: AllowedMentions.None,
             components: GetAddMessageComponents(quote, true, false)
         );
@@ -84,10 +84,11 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         }
         async Task UpdateAddMessage(Quote quote, bool exists, bool setShow) {
             bool hasEmbeds = (await GetOriginalResponseAsync()).Embeds.Count > 0;
+            bool show = hasEmbeds || setShow;
+            Embed[] addMessageEmbeds = await GetAddMessageEmbeds(quote, exists, show);
             await ModifyOriginalResponseAsync(msg => {
-                bool show = hasEmbeds || setShow;
                 msg.Content = GetAddMessageContent(quote, exists, show);
-                msg.Embeds = GetAddMessageEmbeds(quote, exists, show);
+                msg.Embeds = addMessageEmbeds;
                 msg.Components = GetAddMessageComponents(quote, exists, show);
             });
         }
@@ -95,8 +96,8 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
     private static string GetAddMessageContent(Quote quote, bool exists, bool show) =>
         exists ? show ? "Quote saved!" : $"Quote {quote.jumpUrl} saved as **{quote.GetFullName()}**!" :
             $"~~Quote {quote.jumpUrl} saved as *{quote.GetFullName()}*!~~";
-    private static Embed[] GetAddMessageEmbeds(Quote quote, bool exists, bool show) =>
-        show && exists ? Util.QuoteToEmbeds(quote).ToArray() : [];
+    private async Task<Embed[]> GetAddMessageEmbeds(Quote quote, bool exists, bool show) =>
+        show && exists ? await Util.QuoteToEmbeds(Context.Client, quote).ToArrayAsync() : [];
     private static MessageComponent GetAddMessageComponents(Quote quote, bool exists, bool show) =>
         !exists ? new ComponentBuilder().Build() :
             new ComponentBuilder()
@@ -150,7 +151,7 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
             .FirstAsync();
         await RespondAsync(
             allowedMentions: AllowedMentions.None,
-            embeds: Util.QuoteToEmbeds(quote).ToArray()
+            embeds: await Util.QuoteToEmbeds(Context.Client, quote).ToArrayAsync()
         );
         if (quote.extraAttachments != 0)
             await ReplyAsync(messageReference: Util.QuoteToForward(quote));
@@ -165,7 +166,7 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         }
         await RespondAsync(
             allowedMentions: AllowedMentions.None,
-            embeds: Util.QuoteToEmbeds(quote).ToArray()
+            embeds: await Util.QuoteToEmbeds(Context.Client, quote).ToArrayAsync()
         );
         if (quote.extraAttachments != 0)
             await ReplyAsync(messageReference: Util.QuoteToForward(quote));
