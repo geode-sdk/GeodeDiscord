@@ -322,17 +322,18 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
         [SlashCommand("import-timestamps", "Import timestamps for all guesses in the specified channel."),
          CommandContextType(InteractionContextType.Guild),
          UsedImplicitly]
-        private async Task ImportTimestamps(IMessageChannel channel, string cacheStartMessageId) {
+        private async Task ImportTimestamps(IMessageChannel channel, string firstGuessMessageId) {
             await DeferAsync();
             Log.Information("[quote-import] Beginning guess timestamps import from {Channel}", channel.Id);
 
+            ulong startId = ulong.Parse(firstGuessMessageId);
             List<Guess> guesses = await db.guesses
-                .Where(x => x.startedAt == default(DateTimeOffset))
+                .Where(x => x.startedAt == default(DateTimeOffset) && x.messageId >= startId)
                 .OrderBy(x => x.messageId)
                 .ToListAsync();
 
             // cache 1000 messages after the specified one
-            foreach (IMessage msg in await channel.GetMessagesAsync(ulong.Parse(cacheStartMessageId), Direction.After).Take(10).FlattenAsync()) {
+            foreach (IMessage msg in await channel.GetMessagesAsync(startId, Direction.After).Take(10).FlattenAsync()) {
                 _messageCache.TryAdd(msg.Id, msg);
             }
 
