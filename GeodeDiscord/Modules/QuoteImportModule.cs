@@ -322,7 +322,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
         [SlashCommand("import-timestamps", "Import timestamps for all guesses in the specified channel."),
          CommandContextType(InteractionContextType.Guild),
          UsedImplicitly]
-        private async Task ImportTimestamps(IMessageChannel channel, ulong cacheStartMessageId) {
+        private async Task ImportTimestamps(IMessageChannel channel, string cacheStartMessageId) {
             await DeferAsync();
             Log.Information("[quote-import] Beginning guess timestamps import from {Channel}", channel.Id);
 
@@ -332,7 +332,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 .ToListAsync();
 
             // cache 1000 messages after the specified one
-            foreach (IMessage msg in await channel.GetMessagesAsync(cacheStartMessageId, Direction.After).Take(10).FlattenAsync()) {
+            foreach (IMessage msg in await channel.GetMessagesAsync(ulong.Parse(cacheStartMessageId), Direction.After).Take(10).FlattenAsync()) {
                 _messageCache.TryAdd(msg.Id, msg);
             }
 
@@ -362,16 +362,25 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                     DateTimeOffset startedAt;
                     DateTimeOffset guessedAt;
                     if (message.EditedTimestamp is null) {
-                        IMessage? reference = await channel.GetMessageAsync(message.Reference.MessageId.GetValueOrDefault(0));
+                        IMessage? reference = _messageCache.GetValueOrDefault(message.Reference.MessageId.GetValueOrDefault(0));
                         if (reference is null) {
-                            Log.Warning("[quote-import] Failed to import guess {Id} timestamps", guess.messageId);
-                            await FollowupAsync($"⚠️ Failed to import guess {guess.messageId} timestamps! (message is not edited and isn't a reply)");
-                            continue;
+                            reference = await channel.GetMessageAsync(message.Reference.MessageId.GetValueOrDefault(0));
+                            if (reference is null) {
+                                Log.Warning("[quote-import] Failed to import guess {Id} timestamps", guess.messageId);
+                                await FollowupAsync($"⚠️ Failed to import guess {guess.messageId} timestamps! (message is not edited and isn't a reply)");
+                                continue;
+                            }
+
+                            foreach (IMessage msg in await channel.GetMessagesAsync(reference, Direction.After).FirstAsync()) {
+                                _messageCache.TryAdd(msg.Id, msg);
+                            }
                         }
+
                         if (!reference.Content.Contains("Who said this?", StringComparison.OrdinalIgnoreCase)) {
                             Log.Warning("[quote-import] Inferred guess {Id} start ({StartId}) doesn't contain \"Who said this?\"", guess.messageId, reference.Id);
                             await FollowupAsync($"⚠️ Inferred guess {guess.messageId} start ({reference.Id}) doesn't contain \"Who said this?\"!");
                         }
+
                         startedAt = reference.Timestamp;
                         guessedAt = message.Timestamp;
                     }
