@@ -347,11 +347,11 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             while (guesses.Count - skip2 > 0) {
                 Guess first = guesses.Skip(skip2).First();
                 await ImportSingleGuessLocal(first);
+                skip2++;
                 foreach (Guess guess in guesses.Skip(skip2).Where(x => _messageCache.ContainsKey(x.messageId))) {
                     await ImportSingleGuessLocal(guess);
                     skip.Add(guess.messageId);
                 }
-                skip2++;
                 if (skip.Count == 0)
                     continue;
                 guesses.RemoveAll(x => skip.Contains(x.messageId));
