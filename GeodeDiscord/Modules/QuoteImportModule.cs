@@ -323,20 +323,22 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
         [SlashCommand("import-timestamps", "Import timestamps for all guesses in the specified channel."),
          CommandContextType(InteractionContextType.Guild),
          UsedImplicitly]
-        private async Task ImportTimestamps(IMessageChannel channel, string firstGuessMessageId) {
+        private async Task ImportTimestamps(IMessageChannel channel, string firstGuessMessageId, string lastGuessMessageId) {
             await DeferAsync();
             Log.Information("[quote-import] Beginning guess timestamps import from {Channel}", channel.Id);
 
             ulong startId = ulong.Parse(firstGuessMessageId);
+            ulong endId = ulong.Parse(lastGuessMessageId);
+
             List<Guess> guesses = await db.guesses
                 .Where(x => x.startedAt == default(DateTimeOffset))
                 .AsAsyncEnumerable()
                 .OrderBy(x => x.messageId)
-                .Where(x => x.messageId >= startId)
+                .Where(x => x.messageId >= startId && x.messageId <= endId)
                 .ToListAsync();
 
             // cache 1000 messages after the specified one
-            foreach (IMessage msg in await channel.GetMessagesAsync(startId, Direction.After).Take(10).FlattenAsync()) {
+            foreach (IMessage msg in await channel.GetMessagesAsync(startId, Direction.After, 1000).FlattenAsync()) {
                 _messageCache.TryAdd(msg.Id, msg);
             }
 
@@ -355,12 +357,15 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 }
                 else {
                     await ImportSingleGuessLocal(first);
+                    guesses.Remove(first);
                 }
                 foreach (Guess guess in guesses.Skip(skip2).Where(x => _messageCache.ContainsKey(x.messageId))) {
                     await ImportSingleGuessLocal(guess);
                     skip.Add(guess.messageId);
                     lastSkipped = guess.messageId;
                 }
+                if (skip.Contains(endId) || guesses.Skip(skip2).First().messageId > endId)
+                    break;
                 if (skip.Count == 0)
                     continue;
                 guesses.RemoveAll(x => skip.Contains(x.messageId));
