@@ -364,7 +364,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                     skip.Add(guess.messageId);
                     lastSkipped = guess.messageId;
                 }
-                if (skip.Contains(endId) || guesses.Skip(skip2).First().messageId > endId)
+                if (skip.Contains(endId) || guesses.Count > skip2 && guesses.Skip(skip2).First().messageId > endId)
                     break;
                 if (skip.Count == 0)
                     continue;
