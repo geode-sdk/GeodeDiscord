@@ -344,13 +344,17 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             int imported = 0;
             HashSet<ulong> skip = [];
             int skip2 = 0;
+            ulong lastSkipped = 0;
             while (guesses.Count - skip2 > 0) {
-                Guess first = guesses.Skip(skip2).First();
+                Guess first = guesses
+                    .Skip(skip2)
+                    .FirstOrDefault(x => x.messageId > lastSkipped, guesses.Skip(skip2).First());
                 await ImportSingleGuessLocal(first);
                 skip2++;
                 foreach (Guess guess in guesses.Skip(skip2).Where(x => _messageCache.ContainsKey(x.messageId))) {
                     await ImportSingleGuessLocal(guess);
                     skip.Add(guess.messageId);
+                    lastSkipped = guess.messageId;
                 }
                 if (skip.Count == 0)
                     continue;
