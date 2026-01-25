@@ -319,6 +319,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
 
         private readonly Dictionary<ulong, IMessage?> _messageCache = [];
 
+        // please may God forgive me
         [SlashCommand("import-timestamps", "Import timestamps for all guesses in the specified channel."),
          CommandContextType(InteractionContextType.Guild),
          UsedImplicitly]
@@ -346,11 +347,15 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             int skip2 = 0;
             ulong lastSkipped = 0;
             while (guesses.Count - skip2 > 0) {
-                Guess first = guesses
-                    .Skip(skip2)
-                    .FirstOrDefault(x => x.messageId > lastSkipped, guesses.Skip(skip2).First());
-                await ImportSingleGuessLocal(first);
-                skip2++;
+                Guess? first = guesses.Skip(skip2).FirstOrDefault(x => x.messageId > lastSkipped);
+                if (first is null) {
+                    first = guesses.Skip(skip2).First();
+                    await ImportSingleGuessLocal(first);
+                    skip2++;
+                }
+                else {
+                    await ImportSingleGuessLocal(first);
+                }
                 foreach (Guess guess in guesses.Skip(skip2).Where(x => _messageCache.ContainsKey(x.messageId))) {
                     await ImportSingleGuessLocal(guess);
                     skip.Add(guess.messageId);
