@@ -343,14 +343,15 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             int guessCount = guesses.Count;
             int imported = 0;
             HashSet<ulong> skip = [];
-            while (guesses.Count > 0) {
-                Guess first = guesses.First();
+            int skip2 = 0;
+            while (guesses.Count - skip2 > 0) {
+                Guess first = guesses.Skip(skip2).First();
                 await ImportSingleGuessLocal(first);
-                guesses.RemoveAt(0);
-                foreach (Guess guess in guesses.Where(x => _messageCache.ContainsKey(x.messageId))) {
+                foreach (Guess guess in guesses.Skip(skip2).Where(x => _messageCache.ContainsKey(x.messageId))) {
                     await ImportSingleGuessLocal(guess);
                     skip.Add(guess.messageId);
                 }
+                skip2++;
                 if (skip.Count == 0)
                     continue;
                 guesses.RemoveAll(x => skip.Contains(x.messageId));
