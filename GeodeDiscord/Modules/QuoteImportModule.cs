@@ -319,41 +319,24 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
 
         private readonly Dictionary<ulong, IMessage?> _messageCache = [];
 
-        [SlashCommand("import-timestamps-from-dms", "Import timestamps for all guesses in all DM channels with the bot."),
+        [SlashCommand("import-timestamps", "Import timestamps for all guesses in DMs with the specified user."),
          CommandContextType(InteractionContextType.Guild),
          UsedImplicitly]
-        private async Task ImportTimestampsFromDms() {
+        private async Task ImportTimestamps(IUser user) {
             await DeferAsync();
-            Log.Information("[quote-import] Beginning guess timestamps import from DMs");
+            Log.Information("[quote-import] Beginning guess timestamps import from DMs with {User}", user.Id);
 
-            await ModifyOriginalResponseAsync(prop =>
-                prop.Content = "Importing guess timestamps from DMs: querying guesses"
-            );
+            await ModifyOriginalResponseAsync(prop => {
+                prop.Content = $"Importing guess timestamps from DMs with <@{user.Id}>: querying guesses";
+                prop.AllowedMentions = AllowedMentions.None;
+            });
             List<Guess> guesses = await db.guesses
-                .Where(x => x.startedAt == default(DateTimeOffset))
+                .Where(x => x.startedAt == default(DateTimeOffset) && x.userId == user.Id)
                 .AsAsyncEnumerable()
                 .OrderBy(x => x.messageId)
                 .ToListAsync();
 
-            await ModifyOriginalResponseAsync(prop =>
-                prop.Content = "Importing guess timestamps from DMs: querying user IDs of missing guesses"
-            );
-            HashSet<ulong> userIds = await db.guesses
-                .Where(x => x.startedAt == default(DateTimeOffset))
-                .Select(x => x.userId)
-                .Distinct() // do i actually need the distinct here? idk. does it really matter? probably not.
-                .ToHashSetAsync();
-
-            await ModifyOriginalResponseAsync(prop =>
-                prop.Content = "Importing guess timestamps from DMs: querying channels"
-            );
-            IEnumerable<IDMChannel> channels = (await Context.Client.GetDMChannelsAsync())
-                .Where(x => userIds.Contains(x.Recipient.Id));
-
-            foreach (IDMChannel channel in channels) {
-                // need to copy the list here anyway because its modified inside of ImportTimestamps
-                await ImportTimestamps(channel, guesses.Where(x => x.userId == channel.Recipient.Id).ToList());
-            }
+            await ImportTimestamps(await user.CreateDMChannelAsync(), guesses);
         }
 
         // please may God forgive me
@@ -378,6 +361,9 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 .ToListAsync();
 
             // cache 1000 messages after the specified one
+            await ModifyOriginalResponseAsync(prop =>
+                prop.Content = $"Importing guess timestamps from <#{channel.Id}>: caching messages"
+            );
             foreach (IMessage msg in await channel.GetMessagesAsync(startId, Direction.After, 1000).FlattenAsync()) {
                 _messageCache.TryAdd(msg.Id, msg);
             }
