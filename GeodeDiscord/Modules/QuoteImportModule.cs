@@ -319,6 +319,18 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
 
         private readonly Dictionary<ulong, IMessage?> _messageCache = [];
 
+        [SlashCommand("import-timestamps-from-dms", "Import timestamps for all guesses in all DM channels with the bot."),
+         CommandContextType(InteractionContextType.Guild),
+         UsedImplicitly]
+        private async Task ImportTimestampsFromDms() {
+            await DeferAsync();
+            Log.Information("[quote-import] Beginning guess timestamps import from DMs");
+
+            foreach (IDMChannel channel in await Context.Client.GetDMChannelsAsync()) {
+                await ImportTimestamps(channel, 0, ulong.MaxValue);
+            }
+        }
+
         // please may God forgive me
         [SlashCommand("import-timestamps", "Import timestamps for all guesses in the specified channel."),
          CommandContextType(InteractionContextType.Guild),
@@ -330,17 +342,21 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             ulong startId = ulong.Parse(firstGuessMessageId);
             ulong endId = ulong.Parse(lastGuessMessageId);
 
+            // cache 1000 messages after the specified one
+            foreach (IMessage msg in await channel.GetMessagesAsync(startId, Direction.After, 1000).FlattenAsync()) {
+                _messageCache.TryAdd(msg.Id, msg);
+            }
+
+            await ImportTimestamps(channel, startId, endId);
+        }
+
+        private async Task ImportTimestamps(IMessageChannel channel, ulong startId, ulong endId) {
             List<Guess> guesses = await db.guesses
                 .Where(x => x.startedAt == default(DateTimeOffset))
                 .AsAsyncEnumerable()
                 .OrderBy(x => x.messageId)
                 .Where(x => x.messageId >= startId && x.messageId <= endId)
                 .ToListAsync();
-
-            // cache 1000 messages after the specified one
-            foreach (IMessage msg in await channel.GetMessagesAsync(startId, Direction.After, 1000).FlattenAsync()) {
-                _messageCache.TryAdd(msg.Id, msg);
-            }
 
             int totalGuessCount = guesses.Count;
             int guessCount = guesses.Count;
