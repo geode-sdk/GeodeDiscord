@@ -515,6 +515,16 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             _messageCache.Clear();
             await FollowupAsync("Cleared message cache.");
         }
+
+        [SlashCommand("count-invalid-timestamps", "Count amount of invalid guess timestamps."),
+         CommandContextType(InteractionContextType.Guild),
+         UsedImplicitly]
+        private async Task CountInvalidTimestamps() {
+            int count = await db.guesses
+                .ToAsyncEnumerable()
+                .CountAsync(x => x.guessedAt - x.startedAt > TimeSpan.FromSeconds(60.0));
+            await FollowupAsync($"{count}/{await db.guesses.CountAsync()} guesses have invalid timestamps bc i fucked up sorgy");
+        }
     }
 
     private readonly record struct UberBotQuote
