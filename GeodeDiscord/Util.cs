@@ -130,6 +130,12 @@ public static class Util {
 
     public static IEnumerable<Embed> QuoteToCensoredEmbeds(Quote quote) {
         StringBuilder description = new();
+        if (quote.replyAuthorId != 0 && quote.replyMessageId != 0 && !string.IsNullOrEmpty(quote.replyContent)) {
+            string[] replyContent = quote.replyContent.Split(["\n", "\r\n"], StringSplitOptions.None);
+            description.AppendLine($"> ?????: {replyContent[0]}");
+            for (int i = 1; i < replyContent.Length; i++)
+                description.AppendLine($"> {replyContent[i]}");
+        }
         description.AppendLine(quote.content);
         description.AppendLine();
         description.AppendLine("\\- ????? in `#?????`");
