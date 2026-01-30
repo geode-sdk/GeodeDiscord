@@ -326,8 +326,33 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             await DeferAsync();
             Log.Information("[quote-import] Beginning guess timestamps import from DMs");
 
-            foreach (IDMChannel channel in await Context.Client.GetDMChannelsAsync()) {
-                await ImportTimestamps(channel, 0, ulong.MaxValue);
+            await ModifyOriginalResponseAsync(prop =>
+                prop.Content = "Importing guess timestamps from DMs: querying guesses"
+            );
+            List<Guess> guesses = await db.guesses
+                .Where(x => x.startedAt == default(DateTimeOffset))
+                .AsAsyncEnumerable()
+                .OrderBy(x => x.messageId)
+                .ToListAsync();
+
+            await ModifyOriginalResponseAsync(prop =>
+                prop.Content = "Importing guess timestamps from DMs: querying user IDs of missing guesses"
+            );
+            HashSet<ulong> userIds = await db.guesses
+                .Where(x => x.startedAt == default(DateTimeOffset))
+                .Select(x => x.userId)
+                .Distinct() // do i actually need the distinct here? idk. does it really matter? probably not.
+                .ToHashSetAsync();
+
+            await ModifyOriginalResponseAsync(prop =>
+                prop.Content = "Importing guess timestamps from DMs: querying channels"
+            );
+            IEnumerable<IDMChannel> channels = (await Context.Client.GetDMChannelsAsync())
+                .Where(x => userIds.Contains(x.Recipient.Id));
+
+            foreach (IDMChannel channel in channels) {
+                // need to copy the list here anyway because its modified inside of ImportTimestamps
+                await ImportTimestamps(channel, guesses.Where(x => x.userId == channel.Recipient.Id).ToList());
             }
         }
 
@@ -342,21 +367,27 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             ulong startId = ulong.Parse(firstGuessMessageId);
             ulong endId = ulong.Parse(lastGuessMessageId);
 
-            // cache 1000 messages after the specified one
-            foreach (IMessage msg in await channel.GetMessagesAsync(startId, Direction.After, 1000).FlattenAsync()) {
-                _messageCache.TryAdd(msg.Id, msg);
-            }
-
-            await ImportTimestamps(channel, startId, endId);
-        }
-
-        private async Task ImportTimestamps(IMessageChannel channel, ulong startId, ulong endId) {
+            await ModifyOriginalResponseAsync(prop =>
+                prop.Content = $"Importing guess timestamps from <#{channel.Id}>: querying guesses"
+            );
             List<Guess> guesses = await db.guesses
                 .Where(x => x.startedAt == default(DateTimeOffset))
                 .AsAsyncEnumerable()
                 .OrderBy(x => x.messageId)
                 .Where(x => x.messageId >= startId && x.messageId <= endId)
                 .ToListAsync();
+
+            // cache 1000 messages after the specified one
+            foreach (IMessage msg in await channel.GetMessagesAsync(startId, Direction.After, 1000).FlattenAsync()) {
+                _messageCache.TryAdd(msg.Id, msg);
+            }
+
+            await ImportTimestamps(channel, guesses);
+        }
+
+        private async Task ImportTimestamps(IMessageChannel channel, List<Guess> guesses) {
+            // guesses are sorted by messageId
+            ulong endId = guesses.Last().messageId;
 
             int totalGuessCount = guesses.Count;
             int guessCount = guesses.Count;
