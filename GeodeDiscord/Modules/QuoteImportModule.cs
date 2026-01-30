@@ -319,10 +319,10 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
 
         private readonly Dictionary<ulong, IMessage?> _messageCache = [];
 
-        [SlashCommand("import-timestamps", "Import timestamps for all guesses in DMs with the specified user."),
+        [SlashCommand("import-timestamps-from-dms", "Import timestamps for all guesses in DMs with the specified user."),
          CommandContextType(InteractionContextType.Guild),
          UsedImplicitly]
-        private async Task ImportTimestamps(IUser user) {
+        private async Task ImportTimestampsFromDms(IUser user) {
             await DeferAsync();
             Log.Information("[quote-import] Beginning guess timestamps import from DMs with {User}", user.Id);
 
