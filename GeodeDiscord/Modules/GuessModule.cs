@@ -328,6 +328,8 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             .Select(x => new { x.startedAt, x.guessedAt })
             .AsAsyncEnumerable()
             .Select(x => (x.guessedAt - x.startedAt).Ticks)
+            // TODO: somehow fix these idk  if that isnt possible make them all 30s or somethin g
+            .Where(x => x <= TimeSpan.FromSeconds(60.0).Ticks)
             .SumAsync());
 
         double averageSeconds = total == 0 ? 0.0 : await db.guesses
@@ -335,12 +337,14 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             .Select(x => new { x.startedAt, x.guessedAt })
             .AsAsyncEnumerable()
             .Select(x => (x.guessedAt - x.startedAt).TotalSeconds)
+            .Where(x => x <= 60.0)
             .AverageAsync();
         double averageCorrectSeconds = correct == 0 ? 0.0 : await db.guesses
             .Where(x => x.userId == user.Id && x.guessId == x.quote.authorId)
             .Select(x => new { x.startedAt, x.guessedAt })
             .AsAsyncEnumerable()
             .Select(x => (x.guessedAt - x.startedAt).TotalSeconds)
+            .Where(x => x <= 60.0)
             .AverageAsync();
 
         double averageCorrectOtherSeconds = correctOther == 0 ? 0.0 : await db.guesses
@@ -348,6 +352,7 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             .Select(x => new { x.startedAt, x.guessedAt })
             .AsAsyncEnumerable()
             .Select(x => (x.guessedAt - x.startedAt).TotalSeconds)
+            .Where(x => x <= 60.0)
             .AverageAsync();
 
         if (quotedCount > 0)
