@@ -513,7 +513,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
          UsedImplicitly]
         private async Task ClearMessageCache() {
             _messageCache.Clear();
-            await FollowupAsync("Cleared message cache.");
+            await RespondAsync("Cleared message cache.");
         }
 
         [SlashCommand("count-invalid-timestamps", "Count amount of invalid guess timestamps."),
@@ -523,7 +523,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             int count = await db.guesses
                 .ToAsyncEnumerable()
                 .CountAsync(x => x.guessedAt - x.startedAt > TimeSpan.FromSeconds(60.0));
-            await FollowupAsync($"{count}/{await db.guesses.CountAsync()} guesses have invalid timestamps bc i fucked up sorgy");
+            await RespondAsync($"{count}/{await db.guesses.CountAsync()} guesses have invalid timestamps bc i fucked up sorgy");
         }
     }
 
