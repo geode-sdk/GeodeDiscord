@@ -97,6 +97,75 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
         await RespondAsync($"Quote **{quote.GetFullName()}** last edited cleared!");
     }
 
+    [SlashCommand("import-reply-contents", "Import reply contents."),
+     CommandContextType(InteractionContextType.Guild),
+     UsedImplicitly]
+    public async Task ImportReplyContents() {
+        await DeferAsync();
+        Log.Information("[quote-import] Beginning reply contents import");
+
+        await ModifyOriginalResponseAsync(prop =>
+            prop.Content = "Importing reply contents: querying quotes"
+        );
+        List<Quote> quotes = await db.quotes
+            .Where(x => x.replyAuthorId != 0 && x.replyMessageId == 0)
+            .ToListAsync();
+
+        int imported = 0;
+        foreach (Quote quote in quotes) {
+            try {
+                if (imported % 10 == 0) {
+                    await ModifyOriginalResponseAsync(prop =>
+                        prop.Content = $"Importing reply contents: {imported}/{quotes.Count} quotes"
+                    );
+                }
+
+                if (await Util.GetChannelAsync(Context.Client, quote.channelId) is not IMessageChannel channel) {
+                    Log.Warning("[quote-import] Failed to import reply contents for quote {Id}: channel not found", quote.id);
+                    await FollowupAsync($"⚠️ Failed to import reply contents for quote {quote.id}! (channel not found)");
+                    continue;
+                }
+
+                IMessage? message = await channel.GetMessageAsync(quote.messageId);
+                if (message is null) {
+                    Log.Warning("[quote-import] Failed to import reply contents for quote {Id}: message not found", quote.id);
+                    await FollowupAsync($"⚠️ Failed to import reply contents for quote {quote.id}! (message not found)");
+                    continue;
+                }
+
+                IMessage? reply = await Util.GetReplyAsync(message);
+                if (reply is null) {
+                    Log.Warning("[quote-import] Failed to import reply contents for quote {Id}: reply not found", quote.id);
+                    await FollowupAsync($"⚠️ Failed to import reply contents for quote {quote.id}! (reply not found)");
+                    continue;
+                }
+
+                db.Remove(quote);
+                db.Add(quote with {
+                    replyMessageId = reply.Id,
+                    replyContent = reply.Content
+                });
+                imported++;
+            }
+            catch (Exception ex) {
+                Log.Warning(ex, "[quote-import] Failed to import reply contents for quote {Id}", quote.id);
+                await FollowupAsync($"⚠️ Failed to import reply contents for quote {quote.id}! (unknown error)");
+            }
+        }
+
+        try { await db.SaveChangesAsync(); }
+        catch (Exception ex) {
+            Log.Error(ex, "Failed to import reply contents");
+            await FollowupAsync("❌ Failed to import reply contents! (error when writing to the database)");
+            return;
+        }
+
+        Log.Information("[quote-import] Imported {Count}/{Total} reply contents", imported, quotes.Count);
+        await ModifyOriginalResponseAsync(prop =>
+            prop.Content = $"Imported {imported}/{quotes.Count} reply contents."
+        );
+    }
+
     [Group("guesses", "Guesses.")]
     public partial class GuessesModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
         [SlashCommand("import", "Import guesses from HAR file."),
@@ -674,14 +743,17 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 quoterId = 0,
 
                 authorId = user?.Id ?? 0,
-                replyAuthorId = 0,
                 jumpUrl = string.IsNullOrWhiteSpace(channelName) ? null : $"#{channelName}",
 
                 images = "",
                 videos = "",
                 extraAttachments = 0,
 
-                content = text
+                content = text,
+
+                replyAuthorId = 0,
+                replyMessageId = 0,
+                replyContent = ""
             });
         }
         private async Task<RestGuildUser?> InferUser(string who, string nick, int id) {

@@ -17,7 +17,7 @@ public static class Util {
         .Take(10)
         .ToList();
 
-    private static async Task<IMessage?> GetReplyAsync(IMessage message) {
+    public static async Task<IMessage?> GetReplyAsync(IMessage message) {
         if (message.Channel is null || message.Reference is null ||
             message.Reference.ChannelId != message.Channel.Id ||
             !message.Reference.MessageId.IsSpecified)
@@ -53,7 +53,7 @@ public static class Util {
 
             List<IAttachment> attachments = GetEmbeddableAttachments(message);
             int extraAttachments = message.Attachments.Count - attachments.Count;
-            ulong replyAuthorId = (await GetReplyAsync(message))?.Author.Id ?? 0;
+            IMessage? reply = await GetReplyAsync(message);
             return new Quote {
                 id = id,
                 name = original?.name ?? "",
@@ -63,12 +63,14 @@ public static class Util {
                 lastEditedAt = timestamp,
                 quoterId = quoterId,
                 authorId = message.Author.Id,
-                replyAuthorId = replyAuthorId,
                 jumpUrl = message.Channel is null ? null : message.GetJumpUrl(),
                 images = string.Join('|', attachments.Where(x => x.ContentType.StartsWith("image/", StringComparison.Ordinal)).Select(x => x.Url)),
                 videos = string.Join('|', attachments.Where(x => x.ContentType.StartsWith("video/", StringComparison.Ordinal)).Select(x => x.Url)),
                 extraAttachments = extraAttachments,
-                content = message.Content
+                content = message.Content,
+                replyAuthorId = reply?.Author.Id ?? 0,
+                replyMessageId = reply?.Id ?? 0,
+                replyContent = reply?.Content ?? ""
             };
         }
     }
@@ -78,6 +80,12 @@ public static class Util {
         IUser? quoter = await GetUserAsync(client, quote.quoterId);
 
         StringBuilder description = new();
+        if (quote.replyAuthorId != 0 && quote.replyMessageId != 0 && !string.IsNullOrEmpty(quote.replyContent)) {
+            string[] replyContent = quote.replyContent.Split(["\n", "\r\n"], StringSplitOptions.None);
+            description.AppendLine($"> <@{quote.replyAuthorId}>: {replyContent[0]}");
+            for (int i = 1; i < replyContent.Length; i++)
+                description.AppendLine($"> {replyContent[i]}");
+        }
         description.AppendLine(quote.content);
         description.AppendLine();
         description.Append($"\\- <@{quote.authorId}>");

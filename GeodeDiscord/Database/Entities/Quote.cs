@@ -20,7 +20,6 @@ public record Quote {
 
     // author
     public required ulong authorId { get; init; }
-    public required ulong replyAuthorId { get; init; }
     public string? jumpUrl { get; init; }
 
     // attachments
@@ -30,6 +29,11 @@ public record Quote {
 
     // content
     public required string content { get; init; }
+
+    // reply
+    public required ulong replyAuthorId { get; init; }
+    public required ulong replyMessageId { get; init; }
+    public required string replyContent { get; init; }
 
     public string GetFullName() => string.IsNullOrWhiteSpace(name) ? id.ToString() : $"{id}: {name}";
 }
