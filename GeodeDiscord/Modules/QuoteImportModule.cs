@@ -493,7 +493,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
             // if it is, we don't need to override it as it's probably more accurate
             TimeSpan distToStarted = (guess.guessedAt - startedAt).Duration();
             TimeSpan distToGuessed = (guess.guessedAt - guessedAt).Duration();
-            if (distToGuessed < distToStarted) {
+            if (distToGuessed < distToStarted || guessedAt - startedAt > TimeSpan.FromSeconds(60.0)) {
                 // stored guessed at is closer to inferred guessed at than to started at
                 // so it's probably more accurate than what we inferred from message timestamps
                 guessedAt = guess.guessedAt;
