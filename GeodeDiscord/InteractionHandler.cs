@@ -24,9 +24,9 @@ public class InteractionHandler(DiscordSocketClient client, InteractionService h
 
     private async Task ReadyAsync() {
 #if DEBUG
-        ulong testGuild = ulong.Parse(Environment.GetEnvironmentVariable("DISCORD_TEST_GUILD") ?? "0");
-        if (testGuild != 0)
-            await handler.RegisterCommandsToGuildAsync(testGuild);
+        await handler.RestClient.BulkOverwriteGlobalCommands([]);
+        foreach (SocketGuild guild in client.Guilds)
+            await handler.RegisterCommandsToGuildAsync(guild.Id);
         await client.SetActivityAsync(new CustomStatusGame("being debugged rn yay"));
 #else
         foreach (SocketGuild guild in client.Guilds)
@@ -51,7 +51,8 @@ public class InteractionHandler(DiscordSocketClient client, InteractionService h
                     break;
             }
         }
-        catch {
+        catch (Exception ex) {
+            Log.Error(ex, "Error handling interaction");
             if (interaction.Type is InteractionType.ApplicationCommand)
                 await interaction.GetOriginalResponseAsync().ContinueWith(async msg => await msg.Result.DeleteAsync());
         }
