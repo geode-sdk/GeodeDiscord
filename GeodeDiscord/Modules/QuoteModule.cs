@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -11,6 +12,7 @@ using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore;
 
 using Serilog;
+using Attachment = GeodeDiscord.Database.Entities.Attachment;
 
 namespace GeodeDiscord.Modules;
 
@@ -20,6 +22,8 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
 
     [MessageCommand("Add quote"), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task Add(IMessage message) {
+        await DeferAsync();
+
         IMessageChannel? channel = await Context.Interaction.GetChannelAsync();
         if (channel is not null) {
             IMessage? realMessage = await channel.GetMessageAsync(message.Id);
@@ -28,52 +32,50 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         }
 
         if (db.quotes.Any(q => q.messageId == message.Id)) {
-            await RespondAsync("❌ This message is already quoted!", ephemeral: true);
+            await FollowupAsync("❌ This message is already quoted!", ephemeral: true);
             return;
         }
 
         int max = !await db.quotes.AnyAsync() ? 0 : await db.quotes.Select(x => x.id).MaxAsync();
 
-        Quote quote = await Util.MessageToQuote(Context.User.Id, max + 1, message);
+        Quote quote = await Util.MessageToQuote(db, Context.User.Id, max + 1, message);
         db.Add(quote);
 
         try { await db.SaveChangesAsync(); }
         catch (Exception ex) {
             Log.Error(ex, "Failed to save quote");
-            await RespondAsync("❌ Failed to save quote!", ephemeral: true);
+            await FollowupAsync("❌ Failed to save quote!", ephemeral: true);
             return;
         }
 
-        await RespondAsync(
+        IUserMessage response = await FollowupAsync(
             GetAddMessageContent(quote, true, false),
-            await GetAddMessageEmbeds(quote, true, false),
             allowedMentions: AllowedMentions.None,
             components: GetAddMessageComponents(quote, true, false)
         );
-        await ContinueAddQuote(quote.messageId);
+        await ContinueAddQuote(quote.messageId, [response]);
     }
 
-    private async Task ContinueAddQuote(ulong quoteMessage) {
+    private async Task ContinueAddQuote(ulong quoteMessage, List<IUserMessage> response) {
         onUpdate += OnUpdate;
-        ulong responseId = (await GetOriginalResponseAsync()).Id;
         SocketInteraction? interaction = await InteractionUtility.WaitForInteractionAsync(Context.Client,
             TimeSpan.FromSeconds(20d),
             inter => inter.Type switch {
                 InteractionType.MessageComponent => inter is SocketMessageComponent msg &&
-                    msg.Message.Id == responseId &&
+                    msg.Message.Id == response[0].Id &&
                     msg.Data.CustomId == $"quote/get-button:{quoteMessage}",
                 _ => false
             });
         onUpdate -= OnUpdate;
         // if timed out, remove the buttons
         if (interaction is null) {
-            await ModifyOriginalResponseAsync(msg => msg.Components = new ComponentBuilder().Build());
+            await response[0].ModifyAsync(msg => msg.Components = new ComponentBuilder().Build());
             return;
         }
         if (await db.quotes.FindAsync(quoteMessage) is not { } currentQuote)
             return;
         await UpdateAddMessage(currentQuote, true, true);
-        await ContinueAddQuote(quoteMessage);
+        await ContinueAddQuote(quoteMessage, response);
         return;
 
         async Task OnUpdate(Quote quote, bool exists) {
@@ -84,21 +86,36 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
             await UpdateAddMessage(quote, exists, false);
         }
         async Task UpdateAddMessage(Quote quote, bool exists, bool setShow) {
-            bool hasEmbeds = (await GetOriginalResponseAsync()).Embeds.Count > 0;
-            bool show = hasEmbeds || setShow;
-            Embed[] addMessageEmbeds = await GetAddMessageEmbeds(quote, exists, show);
-            await ModifyOriginalResponseAsync(msg => {
-                msg.Content = GetAddMessageContent(quote, exists, show);
-                msg.Embeds = addMessageEmbeds;
-                msg.Components = GetAddMessageComponents(quote, exists, show);
-            });
+            bool hasEmbeds = response[0].Embeds.Count > 0;
+            bool show = exists && (hasEmbeds || setShow);
+            if (show) {
+                QuoteRenderer renderer = new(db, Context);
+                response = await renderer.Render(quote, async (embeds, attachments) => {
+                    await response[0].ModifyAsync(msg => {
+                        msg.Attachments = new Optional<IEnumerable<FileAttachment>>(attachments);
+                        msg.Content = GetAddMessageContent(quote, exists, true);
+                        msg.Embeds = embeds;
+                        msg.Components = GetAddMessageComponents(quote, exists, true);
+                    });
+                    return response[0];
+                }, response);
+            }
+            else {
+                await response[0].ModifyAsync(msg => {
+                    msg.Attachments = new Optional<IEnumerable<FileAttachment>>([]);
+                    msg.Content = GetAddMessageContent(quote, exists, false);
+                    msg.Embeds = new Optional<Embed[]>([]);
+                    msg.Components = GetAddMessageComponents(quote, exists, false);
+                });
+                foreach (IUserMessage message in response.Skip(1)) {
+                    await message.DeleteAsync();
+                }
+            }
         }
     }
     private static string GetAddMessageContent(Quote quote, bool exists, bool show) =>
         exists ? show ? "Quote saved!" : $"Quote {quote.jumpUrl} saved as **{quote.GetFullName()}**!" :
             $"~~Quote {quote.jumpUrl} saved as *{quote.GetFullName()}*!~~";
-    private async Task<Embed[]> GetAddMessageEmbeds(Quote quote, bool exists, bool show) =>
-        show && exists ? await Util.QuoteToEmbeds(Context.Client, quote).ToArrayAsync() : [];
     private static MessageComponent GetAddMessageComponents(Quote quote, bool exists, bool show) =>
         !exists ? new ComponentBuilder().Build() :
             new ComponentBuilder()
@@ -141,6 +158,7 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         );
     }
 
+    [SuppressMessage("ReSharper", "EntityFramework.ClientSideDbFunctionCall")]
     [SlashCommand("random", "Gets a random quote."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task GetRandom(IUser? user = null) {
         if (user is null ? !db.quotes.Any() : !db.quotes.Any(q => q.authorId == user.Id)) {
@@ -150,19 +168,15 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         Quote quote = await (user is null ? db.quotes : db.quotes.Where(q => q.authorId == user.Id))
             .OrderBy(_ => EF.Functions.Random())
             .FirstAsync();
-        await RespondAsync(
-            allowedMentions: AllowedMentions.None,
-            embeds: await Util.QuoteToEmbeds(Context.Client, quote).ToArrayAsync()
-        );
-        if (quote.extraAttachments != 0) {
-            await ReplyAsync(messageReference: Util.QuoteToForward(quote));
-        }
-        else if (!string.IsNullOrEmpty(quote.videos)) {
-            await ReplyAsync(
-                text: quote.videos.Replace('|', '\n'),
-                allowedMentions: AllowedMentions.None
+        QuoteRenderer renderer = new(db, Context);
+        await renderer.Render(quote, async (embeds, attachments) => {
+            await RespondWithFilesAsync(
+                attachments: attachments,
+                allowedMentions: AllowedMentions.None,
+                embeds: embeds
             );
-        }
+            return await GetOriginalResponseAsync();
+        });
     }
 
     [SlashCommand("get", "Gets a quote with the specified ID."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
@@ -172,30 +186,28 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
             await RespondAsync("❌ Quote not found!", ephemeral: true);
             return;
         }
-        await RespondAsync(
-            allowedMentions: AllowedMentions.None,
-            embeds: await Util.QuoteToEmbeds(Context.Client, quote).ToArrayAsync()
-        );
-        if (quote.extraAttachments != 0) {
-            await ReplyAsync(messageReference: Util.QuoteToForward(quote));
-        }
-        else if (!string.IsNullOrEmpty(quote.videos)) {
-            await ReplyAsync(
-                text: quote.videos.Replace('|', '\n'),
-                allowedMentions: AllowedMentions.None
+        QuoteRenderer renderer = new(db, Context);
+        await renderer.Render(quote, async (embeds, attachments) => {
+            await RespondWithFilesAsync(
+                attachments: attachments,
+                allowedMentions: AllowedMentions.None,
+                embeds: embeds
             );
-        }
+            return await GetOriginalResponseAsync();
+        });
     }
 
     [SlashCommand("info", "Gets all stored information for a quote with the specified ID."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task Info([Autocomplete(typeof(QuoteAutocompleteHandler))] int id) {
-        Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
+        Quote? quote = await db.quotes
+            .Include(quote => quote.files)
+            .Include(quote => quote.embeds)
+            .FirstOrDefaultAsync(q => q.id == id);
         if (quote is null) {
             await RespondAsync("❌ Quote not found!", ephemeral: true);
             return;
         }
         StringBuilder builder = new();
-        string[] images = quote.images.Split('|');
         // defer in case getting the channel and all the users is slow
         await DeferAsync();
         IChannel? channel = await Util.GetChannelAsync(Context.Client, quote.channelId);
@@ -211,11 +223,12 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         builder.AppendLine($"- Quoter: `{quote.quoterId}` `{quoter?.GlobalName ?? "<unknown>"}` `@{quoter?.Username ?? "<unknown>"}` <@{quote.quoterId}>");
         builder.AppendLine($"- Author: `{quote.authorId}` `{author?.GlobalName ?? "<unknown>"}` `@{author?.Username ?? "<unknown>"}` <@{quote.authorId}>");
         builder.AppendLine($"- Reply author: `{quote.replyAuthorId}` `{replyAuthor?.GlobalName ?? "<unknown>"}` `@{replyAuthor?.Username ?? "<unknown>"}` <@{quote.replyAuthorId}>");
-        builder.AppendLine("- Images:");
-        foreach (string image in images) {
-            builder.AppendLine($"  - `{image}` {image}");
-        }
-        builder.AppendLine($"- Extra attachments: `{quote.extraAttachments}`");
+        builder.AppendLine("- Files:");
+        foreach (Attachment file in quote.files)
+            builder.AppendLine($"  - `{file.contentType}` `{file.url}` {file.url}");
+        builder.AppendLine("- Embeds:");
+        foreach (Attachment embed in quote.embeds)
+            builder.AppendLine($"  - `{embed.contentType}` `{embed.url}` {embed.url}");
         builder.AppendLine($"- Content: `{quote.content}`");
         await FollowupAsync(
             text: builder.ToString(),

@@ -137,7 +137,7 @@ public partial class QuoteModule {
             }
 
             db.Remove(quote);
-            db.Add(await Util.MessageToQuote(quote.quoterId, quote.id, message, quote));
+            db.Add(await Util.MessageToQuote(db, quote.quoterId, quote.id, message, quote));
 
             try { await db.SaveChangesAsync(); }
             catch (Exception ex) {

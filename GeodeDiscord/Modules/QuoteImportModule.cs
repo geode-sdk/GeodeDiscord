@@ -14,6 +14,7 @@ using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore;
 
 using Serilog;
+using Attachment = Discord.Attachment;
 
 namespace GeodeDiscord.Modules;
 
@@ -96,6 +97,8 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
         }
         await RespondAsync($"Quote **{quote.GetFullName()}** last edited cleared!");
     }
+
+    // TODO: remove everything
 
     [SlashCommand("import-reply-contents", "Import reply contents."),
      CommandContextType(InteractionContextType.Guild),
@@ -324,7 +327,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 Quote? quote = await db.quotes.FirstOrDefaultAsync(x =>
                     x.createdAt == timestamp ||
                     x.content != "" && x.content.Trim() == content.Trim() ||
-                    x.images != "" && image != "" && x.images.StartsWith(image) ||
+                    x.files.Count > 0 && x.files.First().url == image ||
                     name.StartsWith(x.id.ToString() + ":") ||
                     name == x.id.ToString() ||
                     x.name != "" && name.EndsWith(x.name)
@@ -717,7 +720,7 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                     await FollowupAsync($"⚠️ Failed to find quoter of quote {id}!");
                 }
 
-                Quote quote = await Util.MessageToQuote(quoter?.Id ?? 0, id, message, timestamp);
+                Quote quote = await Util.MessageToQuote(db, quoter?.Id ?? 0, id, message, timestamp);
                 await AddQuote(await InferManual(quote, id, nick));
                 return true;
             }
@@ -745,9 +748,8 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 authorId = user?.Id ?? 0,
                 jumpUrl = string.IsNullOrWhiteSpace(channelName) ? null : $"#{channelName}",
 
-                images = "",
-                videos = "",
-                extraAttachments = 0,
+                files = [],
+                embeds = [],
 
                 content = text,
 

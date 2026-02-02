@@ -3,20 +3,15 @@ using System.Text;
 
 using Discord;
 using Discord.WebSocket;
+using GeodeDiscord.Database;
 using GeodeDiscord.Database.Entities;
 using Serilog;
 using Serilog.Events;
+using Attachment = GeodeDiscord.Database.Entities.Attachment;
 
 namespace GeodeDiscord;
 
 public static class Util {
-    private static List<IAttachment> GetEmbeddableAttachments(IMessage message) => message.Attachments
-        .Where(att => !att.IsSpoiler() &&
-            (att.ContentType.StartsWith("image/", StringComparison.Ordinal) ||
-                att.ContentType.StartsWith("video/", StringComparison.Ordinal)))
-        .Take(10)
-        .ToList();
-
     public static async Task<IMessage?> GetReplyAsync(IMessage message) {
         if (message.Channel is null || message.Reference is null ||
             message.Reference.ChannelId != message.Channel.Id ||
@@ -38,10 +33,10 @@ public static class Util {
         return refMessage ?? null;
     }
 
-    public static Task<Quote> MessageToQuote(ulong quoterId, int id, IMessage message, Quote? original = null) =>
-        MessageToQuote(quoterId, id, message, DateTimeOffset.Now, original);
+    public static Task<Quote> MessageToQuote(ApplicationDbContext db, ulong quoterId, int id, IMessage message,
+        Quote? original = null) => MessageToQuote(db, quoterId, id, message, DateTimeOffset.Now, original);
 
-    public static async Task<Quote> MessageToQuote(ulong quoterId, int id, IMessage message,
+    public static async Task<Quote> MessageToQuote(ApplicationDbContext db, ulong quoterId, int id, IMessage message,
         DateTimeOffset timestamp, Quote? original = null) {
         while (true) {
             // if we're just quoting a forwarded message, quote the forwarded message instead
@@ -51,8 +46,8 @@ public static class Util {
                 continue;
             }
 
-            List<IAttachment> attachments = GetEmbeddableAttachments(message);
-            int extraAttachments = message.Attachments.Count - attachments.Count;
+            Dictionary<string, Attachment> attachments = [];
+
             IMessage? reply = await GetReplyAsync(message);
             return new Quote {
                 id = id,
@@ -64,105 +59,32 @@ public static class Util {
                 quoterId = quoterId,
                 authorId = message.Author.Id,
                 jumpUrl = message.Channel is null ? null : message.GetJumpUrl(),
-                images = string.Join('|', attachments.Where(x => x.ContentType.StartsWith("image/", StringComparison.Ordinal)).Select(x => x.Url)),
-                videos = string.Join('|', attachments.Where(x => x.ContentType.StartsWith("video/", StringComparison.Ordinal)).Select(x => x.Url)),
-                extraAttachments = extraAttachments,
+                files = [..message.Attachments.Select(x => {
+                    Attachment attachment = attachments.GetValueOrDefault(x.Url) ??
+                        db.attachments.FirstOrDefault(y => y.url == x.Url) ??
+                        new Attachment {
+                            url = x.Url,
+                            contentType = x.ContentType
+                        };
+                    attachments.TryAdd(attachment.url, attachment);
+                    return attachment;
+                })],
+                embeds = [..message.Embeds.Select(x => {
+                    Attachment attachment = attachments.GetValueOrDefault(x.Url) ??
+                        db.attachments.FirstOrDefault(y => y.url == x.Url) ??
+                        new Attachment {
+                            url = x.Url,
+                            contentType = null
+                        };
+                    attachments.TryAdd(attachment.url, attachment);
+                    return attachment;
+                })],
                 content = message.Content,
                 replyAuthorId = reply?.Author.Id ?? 0,
                 replyMessageId = reply?.Id ?? 0,
                 replyContent = reply?.Content ?? ""
             };
         }
-    }
-
-    public static async IAsyncEnumerable<Embed> QuoteToEmbeds(DiscordSocketClient client, Quote quote) {
-        IChannel? channel = await GetChannelAsync(client, quote.channelId);
-        IUser? quoter = await GetUserAsync(client, quote.quoterId);
-
-        StringBuilder description = new();
-        if (quote.replyAuthorId != 0 && quote.replyMessageId != 0 && !string.IsNullOrEmpty(quote.replyContent)) {
-            string[] replyContent = quote.replyContent.Split(["\n", "\r\n"], StringSplitOptions.None);
-            description.AppendLine($"> <@{quote.replyAuthorId}>: {replyContent[0]}");
-            for (int i = 1; i < replyContent.Length; i++)
-                description.AppendLine($"> {replyContent[i]}");
-        }
-        description.AppendLine(quote.content);
-        description.AppendLine();
-        description.Append($"\\- <@{quote.authorId}>");
-        description.Append($" in `#{channel?.Name ?? "<unknown>"}`");
-        if (!string.IsNullOrWhiteSpace(quote.jumpUrl)) {
-            description.Append($" [>>]({quote.jumpUrl})");
-        }
-
-        string[] images = quote.images.Split('|');
-
-        List<string> extraAttachments = [];
-        if (!string.IsNullOrEmpty(quote.videos)) {
-            string[] videos = quote.videos.Split('|');
-            extraAttachments.Add($"{videos.Length:+0;-#} video{(videos.Length != 1 ? "s" : "")}");
-        }
-        if (quote.extraAttachments != 0) {
-            extraAttachments.Add($"{quote.extraAttachments:+0;-#} attachment{(quote.extraAttachments != 1 ? "s" : "")}");
-        }
-
-        StringBuilder footer = new();
-        if (extraAttachments.Count != 0)
-            footer.AppendLine(string.Join(", ", extraAttachments));
-        footer.Append(quoter?.GlobalName ?? "<unknown>");
-
-        yield return new EmbedBuilder()
-            .WithAuthor(quote.GetFullName())
-            .WithDescription(description.ToString())
-            .WithImageUrl(images.Length > 0 ? images[0] : null)
-            .WithTimestamp(quote.createdAt)
-            .WithFooter(footer.ToString())
-            .Build();
-
-        foreach (string image in images.Skip(1))
-            yield return new EmbedBuilder()
-                .WithImageUrl(image)
-                .Build();
-    }
-
-    public static MessageReference QuoteToForward(Quote quote) => new(
-        quote.messageId, quote.channelId, null, false, MessageReferenceType.Forward
-    );
-
-    public static IEnumerable<Embed> QuoteToCensoredEmbeds(Quote quote) {
-        StringBuilder description = new();
-        if (quote.replyAuthorId != 0 && quote.replyMessageId != 0 && !string.IsNullOrEmpty(quote.replyContent)) {
-            string[] replyContent = quote.replyContent.Split(["\n", "\r\n"], StringSplitOptions.None);
-            description.AppendLine($"> ?????: {replyContent[0]}");
-            for (int i = 1; i < replyContent.Length; i++)
-                description.AppendLine($"> {replyContent[i]}");
-        }
-        description.AppendLine(quote.content);
-        description.AppendLine();
-        description.AppendLine("\\- ????? in `#?????`");
-
-        string[] images = quote.images.Split('|');
-
-        StringBuilder footer = new();
-        if (quote.extraAttachments != 0) {
-            footer.Append($"{quote.extraAttachments.ToString("+0;-#")} attachment");
-            if (quote.extraAttachments != 1)
-                footer.Append('s');
-            footer.AppendLine();
-        }
-        footer.Append("?????");
-
-        yield return new EmbedBuilder()
-            .WithAuthor("?????")
-            .WithDescription(description.ToString())
-            .WithImageUrl(images.Length > 0 ? images[0] : null)
-            .WithTimestamp(DateTimeOffset.FromUnixTimeSeconds(694201337))
-            .WithFooter(footer.ToString())
-            .Build();
-
-        foreach (string image in images.Skip(1))
-            yield return new EmbedBuilder()
-                .WithImageUrl(image)
-                .Build();
     }
 
     public static LogEventLevel DiscordToSerilogLevel(LogSeverity x) => x switch {

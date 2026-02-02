@@ -29,7 +29,6 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         await DeferAsync();
 
         IQueryable<Quote> quotes = db.quotes
-            .Where(x => x.extraAttachments == 0) // extra attachments require forwarding right now :<
             .OrderBy(_ => EF.Functions.Random())
             .Take(10); // surely 10 is gonna be enough to find one
 
@@ -88,6 +87,8 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         (ulong id, string name)[] users = selectedUsers.ToArray();
         Random.Shared.Shuffle(users);
 
+        QuoteRenderer renderer = new(db, Context);
+
         ComponentBuilder components = new();
         foreach ((ulong id, string name) in users) {
             components.WithButton(
@@ -95,18 +96,15 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
                 $"guess/guess-button:{id}"
             );
         }
-        IUserMessage response = await FollowupAsync(
-            text: $"## {Context.User.Mention}, who said this?",
-            allowedMentions: AllowedMentions.None,
-            embeds: Util.QuoteToCensoredEmbeds(quote).ToArray(),
-            components: components.Build()
-        );
-        if (!string.IsNullOrEmpty(quote.videos)) {
-            await ReplyAsync(
-                text: quote.videos.Replace('|', '\n'),
-                allowedMentions: AllowedMentions.None
-            );
-        }
+        List<IUserMessage> render =
+            await renderer.RenderCensored(quote, (embeds, attachments) => FollowupWithFilesAsync(
+                attachments: attachments,
+                text: $"## {Context.User.Mention}, who said this?",
+                allowedMentions: AllowedMentions.None,
+                embeds: embeds,
+                components: components.Build()
+            ));
+        IUserMessage response = render[0];
 
         SocketMessageComponent? interaction = await InteractionUtility.WaitForInteractionAsync(
             Context.Client,
@@ -174,6 +172,7 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             GuessResult.Incorrect => "❌ ",
             GuessResult.Correct when streak > 1 && newBestStreak => "🔥 ",
             GuessResult.Correct => "✅ ",
+            // ReSharper disable once UnreachableSwitchArmDueToIntegerAnalysis
             _ => "❓ "
         });
 
@@ -199,6 +198,7 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             case GuessResult.Correct:
                 content.AppendLine($"Good job, {Context.User.Mention}, this quote is by <@{quote.authorId}>!");
                 break;
+            // ReSharper disable once UnreachableSwitchCaseDueToIntegerAnalysis
             default:
                 content.AppendLine($"{Context.User.Mention}?????");
                 break;
@@ -215,17 +215,20 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             content.AppendLine("-# ⚠️ Failed to save stats, sorry... :<");
         }
 
-        Embed[] quoteEmbeds = await Util.QuoteToEmbeds(Context.Client, quote).ToArrayAsync();
-        await response.ModifyAsync(x => {
-            x.Content = content.ToString();
-            x.AllowedMentions = AllowedMentions.None;
-            x.Embeds = quoteEmbeds;
-            ComponentBuilder component = new ComponentBuilder()
-                .WithButton("Guess again!", "guess/guess-again", ButtonStyle.Primary, new Emoji("❓"));
-            if (guessId != 0)
-                component.WithButton("Fix names", "guess/guess-fix-names", ButtonStyle.Secondary, new Emoji("🔧"));
-            x.Components = component.Build();
-        });
+        await renderer.Render(quote, async (embeds, attachments) => {
+            await response.ModifyAsync(x => {
+                x.Attachments = new Optional<IEnumerable<FileAttachment>>(attachments);
+                x.Content = content.ToString();
+                x.AllowedMentions = AllowedMentions.None;
+                x.Embeds = embeds;
+                ComponentBuilder component = new ComponentBuilder()
+                    .WithButton("Guess again!", "guess/guess-again", ButtonStyle.Primary, new Emoji("❓"));
+                if (guessId != 0)
+                    component.WithButton("Fix names", "guess/guess-fix-names", ButtonStyle.Secondary, new Emoji("🔧"));
+                x.Components = component.Build();
+            });
+            return response;
+        }, render);
     }
 
     [ComponentInteraction("guess-button:*"), UsedImplicitly]

@@ -12,5 +12,5 @@ public record Guess {
     public required ulong userId { get; init; }
     public required ulong guessId { get; init; }
     [ForeignKey("quoteMessageId")]
-    public required Quote quote { get; init; }
+    public virtual required Quote quote { get; init; }
 }

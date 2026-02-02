@@ -23,9 +23,8 @@ public record Quote {
     public string? jumpUrl { get; init; }
 
     // attachments
-    public required string images { get; init; }
-    public required string videos { get; init; }
-    public required int extraAttachments { get; init; }
+    public virtual required ICollection<Attachment> files { get; init; }
+    public virtual required ICollection<Attachment> embeds { get; init; }
 
     // content
     public required string content { get; init; }
