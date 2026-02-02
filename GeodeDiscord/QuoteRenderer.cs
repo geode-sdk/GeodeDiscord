@@ -149,15 +149,14 @@ public class QuoteRenderer(ApplicationDbContext db, SocketInteractionContext con
                 string thumbnailName = $"thumbnail{gallery.Count}.webp";
                 gallery.Add($"attachment://{thumbnailName}");
                 try {
-                    // TODO: uncomment after testing
-                    //HttpResponseMessage response = await http.GetAsync(GetThumbnailUrl(attachment.url));
-                    //if (response.IsSuccessStatusCode) {
-                    //    Stream stream = await response.Content.ReadAsStreamAsync();
-                    //    galleryUploads.Add(new FileAttachment(stream, thumbnailName));
-                    //}
-                    //else {
+                    HttpResponseMessage response = await http.GetAsync(GetThumbnailUrl(attachment.url));
+                    if (response.IsSuccessStatusCode) {
+                        Stream stream = await response.Content.ReadAsStreamAsync();
+                        galleryUploads.Add(new FileAttachment(stream, thumbnailName));
+                    }
+                    else {
                         attachmentsToUpdate.Add(attachment.url, (attachment, thumbnailName));
-                    //}
+                    }
                 }
                 catch (Exception ex) {
                     Log.Warning(ex, "Failed to fetch video thumbnail from Discord");
