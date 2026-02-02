@@ -84,10 +84,19 @@ public static class Program {
             return Task.CompletedTask;
         };
 
-        await services.GetRequiredService<InteractionHandler>().InitializeAsync();
+        InteractionHandler interactionHandler = services.GetRequiredService<InteractionHandler>();
+        await interactionHandler.InitializeAsync();
 
         await client.LoginAsync(TokenType.Bot, Environment.GetEnvironmentVariable("DISCORD_TOKEN"));
         await client.StartAsync();
+
+        Console.CancelKeyPress += (_, args) => {
+            args.Cancel = true;
+            interactionHandler.TeardownAsync().Wait();
+            client.StopAsync().Wait();
+            Environment.Exit(0);
+        };
+
         await Task.Delay(Timeout.Infinite);
     }
 

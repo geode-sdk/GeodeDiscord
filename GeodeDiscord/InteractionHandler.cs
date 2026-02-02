@@ -24,13 +24,20 @@ public class InteractionHandler(DiscordSocketClient client, InteractionService h
 
     private async Task ReadyAsync() {
 #if DEBUG
+        Log.Information("Clearing global commands");
         await handler.RestClient.BulkOverwriteGlobalCommands([]);
+
+        Log.Information("Registering guild commands");
         foreach (SocketGuild guild in client.Guilds)
             await handler.RegisterCommandsToGuildAsync(guild.Id);
+
         await client.SetActivityAsync(new CustomStatusGame("being debugged rn yay"));
 #else
+        Log.Information("Clearing guild commands");
         foreach (SocketGuild guild in client.Guilds)
             await handler.RestClient.BulkOverwriteGuildCommands([], guild.Id);
+
+        Log.Information("Registering global commands");
         await handler.RegisterCommandsGloballyAsync();
 #endif
     }
@@ -56,5 +63,11 @@ public class InteractionHandler(DiscordSocketClient client, InteractionService h
             if (interaction.Type is InteractionType.ApplicationCommand)
                 await interaction.GetOriginalResponseAsync().ContinueWith(async msg => await msg.Result.DeleteAsync());
         }
+    }
+
+    public async Task TeardownAsync() {
+        Log.Information("Clearing guild commands");
+        foreach (SocketGuild guild in client.Guilds)
+            await handler.RestClient.BulkOverwriteGuildCommands([], guild.Id);
     }
 }
