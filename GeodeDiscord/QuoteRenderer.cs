@@ -13,7 +13,7 @@ namespace GeodeDiscord;
 
 public class QuoteRenderer(ApplicationDbContext db, SocketInteractionContext context) {
     public delegate Task<IUserMessage> EmbedRenderer(Embed[] embeds, IEnumerable<FileAttachment> attachments);
-    private delegate Task<IUserMessage> FollowupRenderer(string text, MessageReference reply);
+    private delegate Task<IUserMessage> FollowupRenderer(string text);
 
     public async Task<List<IUserMessage>> Render(Quote quote, EmbedRenderer renderer) =>
         await Render(await PrepareRender(quote), renderer);
@@ -68,10 +68,9 @@ public class QuoteRenderer(ApplicationDbContext db, SocketInteractionContext con
     }
 
     private Task<List<IUserMessage>> Render(QuoteRenderData data, EmbedRenderer renderer) => Render(
-        data, renderer, async (text, reply) => await context.Channel.SendMessageAsync(
+        data, renderer, async text => await context.Interaction.FollowupAsync(
             text,
-            allowedMentions: AllowedMentions.None,
-            messageReference: reply
+            allowedMentions: AllowedMentions.None
         )
     );
 
@@ -80,12 +79,11 @@ public class QuoteRenderer(ApplicationDbContext db, SocketInteractionContext con
         using List<IUserMessage>.Enumerator messages = previous.GetEnumerator();
         messages.MoveNext(); // guaranteed to have at least one element
         List<IUserMessage> newMessages = await Render(
-            data, renderer, async (text, reply) => {
+            data, renderer, async text => {
                 if (!messages.MoveNext()) {
-                    return await context.Channel.SendMessageAsync(
+                    return await context.Interaction.FollowupAsync(
                         text,
-                        allowedMentions: AllowedMentions.None,
-                        messageReference: reply
+                        allowedMentions: AllowedMentions.None
                     );
                 }
                 await ModifyMessageAsync(messages.Current, msg => {
@@ -208,7 +206,7 @@ public class QuoteRenderer(ApplicationDbContext db, SocketInteractionContext con
             .Select(x => string.Join('\n', x));
 
         foreach (string text in embedLinks) {
-            IUserMessage followup = await followupRenderer(text, new MessageReference(quoteMsg.Id));
+            IUserMessage followup = await followupRenderer(text);
             messages.Add(followup);
 
             if (attachmentsToUpdate.Count == 0)
