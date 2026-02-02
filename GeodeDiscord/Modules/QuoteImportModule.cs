@@ -213,6 +213,7 @@ public class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<
 
     [Group("guesses", "Guesses.")]
     public class GuessesModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
+        // ReSharper disable once UnusedMember.Local
         private Task<ImportProcess> StartImport(string name, string clarifier = "") =>
             ImportProcess.Start(Context, name, clarifier);
 
