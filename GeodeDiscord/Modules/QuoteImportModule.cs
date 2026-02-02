@@ -98,48 +98,101 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
         await RespondAsync($"Quote **{quote.GetFullName()}** last edited cleared!");
     }
 
-    // TODO: remove everything
+#pragma warning disable CA1816
+    private class ImportProcess(SocketInteractionContext context, string name) {
+        public static async Task<ImportProcess> Start(SocketInteractionContext context, string name, string clarifier) {
+            await context.Interaction.DeferAsync();
+            ImportProcess process = new(context, name);
+            if (!string.IsNullOrWhiteSpace(clarifier))
+                process.Clarify(clarifier);
+            Log.Information(
+                "[quote-import] Beginning {Message}",
+                string.Join(' ', [name, "import", ..process._clarifiers])
+            );
+            return process;
+        }
+
+        private readonly Stack<string> _clarifiers = [];
+        public Clarifier Clarify(string clarifier) {
+            _clarifiers.Push(clarifier);
+            return new Clarifier(this);
+        }
+        public class Clarifier(ImportProcess process) : IDisposable {
+            public void Dispose() => process._clarifiers.Pop();
+        }
+
+        public async Task ReportProgress(string message) {
+            string clarified = string.Join(' ', [name, .._clarifiers.Take(1)]);
+            await context.Interaction.ModifyOriginalResponseAsync(prop =>
+                prop.Content = $"Importing ${clarified}: {message}"
+            );
+        }
+
+        public async Task ReportWarning(string message, string reason, Exception? exception = null) {
+            if (exception is null)
+                Log.Warning("[quote-import] {Message}: {Reason}", message, reason);
+            else
+                Log.Warning(exception, "[quote-import] {Message}", message);
+            await context.Interaction.FollowupAsync($"⚠️ ${message}! ({reason})");
+        }
+
+        public async Task ReportFail(string reason, Exception? exception = null) {
+            string clarified = string.Join(' ', [name, .._clarifiers]);
+            await ReportWarning($"Failed to import {clarified}", reason, exception);
+        }
+
+        public async Task Fail(string reason, Exception? exception) {
+            string clarified = string.Join(' ', [name, .._clarifiers]);
+            if (exception is null)
+                Log.Error("[quote-import] Failed to import {Name}: {Reason}", clarified, reason);
+            else
+                Log.Error(exception, "[quote-import] Failed to import {Name}", clarified);
+            await context.Interaction.FollowupAsync($"❌ Failed to import ${clarified}! ({reason})");
+        }
+
+        public async Task Success(string message) {
+            Log.Information("[quote-import] {Message}", message);
+            await context.Interaction.ModifyOriginalResponseAsync(prop => prop.Content = $"{message}.");
+        }
+    }
+#pragma warning restore CA1816
+
+    private Task<ImportProcess> StartImport(string name, string clarifier = "") =>
+        ImportProcess.Start(Context, name, clarifier);
 
     [SlashCommand("import-reply-contents", "Import reply contents."),
      CommandContextType(InteractionContextType.Guild),
      UsedImplicitly]
     public async Task ImportReplyContents() {
-        await DeferAsync();
-        Log.Information("[quote-import] Beginning reply contents import");
+        ImportProcess process = await StartImport("reply contents");
 
-        await ModifyOriginalResponseAsync(prop =>
-            prop.Content = "Importing reply contents: querying quotes"
-        );
+        await process.ReportProgress("querying quotes");
         List<Quote> quotes = await db.quotes
             .Where(x => x.replyAuthorId != 0 && x.replyMessageId == 0)
             .ToListAsync();
 
         int imported = 0;
         foreach (Quote quote in quotes) {
+            using ImportProcess.Clarifier quoteClarifier = process.Clarify($"for quote {quote.id}");
             try {
                 if (imported % 10 == 0) {
-                    await ModifyOriginalResponseAsync(prop =>
-                        prop.Content = $"Importing reply contents: {imported}/{quotes.Count} quotes"
-                    );
+                    await process.ReportProgress($"{imported}/{quotes.Count} quotes");
                 }
 
                 if (await Util.GetChannelAsync(Context.Client, quote.channelId) is not IMessageChannel channel) {
-                    Log.Warning("[quote-import] Failed to import reply contents for quote {Id}: channel not found", quote.id);
-                    await FollowupAsync($"⚠️ Failed to import reply contents for quote {quote.id}! (channel not found)");
+                    await process.ReportFail("channel not found");
                     continue;
                 }
 
                 IMessage? message = await channel.GetMessageAsync(quote.messageId);
                 if (message is null) {
-                    Log.Warning("[quote-import] Failed to import reply contents for quote {Id}: message not found", quote.id);
-                    await FollowupAsync($"⚠️ Failed to import reply contents for quote {quote.id}! (message not found)");
+                    await process.ReportFail("message not found");
                     continue;
                 }
 
                 IMessage? reply = await Util.GetReplyAsync(message);
                 if (reply is null) {
-                    Log.Warning("[quote-import] Failed to import reply contents for quote {Id}: reply not found", quote.id);
-                    await FollowupAsync($"⚠️ Failed to import reply contents for quote {quote.id}! (reply not found)");
+                    await process.ReportFail("reply not found");
                     continue;
                 }
 
@@ -151,26 +204,24 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
                 imported++;
             }
             catch (Exception ex) {
-                Log.Warning(ex, "[quote-import] Failed to import reply contents for quote {Id}", quote.id);
-                await FollowupAsync($"⚠️ Failed to import reply contents for quote {quote.id}! (unknown error)");
+                await process.ReportFail("unknown error", ex);
             }
         }
 
         try { await db.SaveChangesAsync(); }
         catch (Exception ex) {
-            Log.Error(ex, "Failed to import reply contents");
-            await FollowupAsync("❌ Failed to import reply contents! (error when writing to the database)");
+            await process.Fail("error when writing to the database", ex);
             return;
         }
 
-        Log.Information("[quote-import] Imported {Count}/{Total} reply contents", imported, quotes.Count);
-        await ModifyOriginalResponseAsync(prop =>
-            prop.Content = $"Imported {imported}/{quotes.Count} reply contents."
-        );
+        await process.Success($"Imported {imported}/{quotes.Count} reply contents");
     }
 
     [Group("guesses", "Guesses.")]
     public partial class GuessesModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
+        private Task<ImportProcess> StartImport(string name, string clarifier = "") =>
+            ImportProcess.Start(Context, name, clarifier);
+
         [SlashCommand("import", "Import guesses from HAR file."),
          CommandContextType(InteractionContextType.Guild),
          UsedImplicitly]
@@ -604,6 +655,9 @@ public partial class QuoteImportModule(ApplicationDbContext db) : InteractionMod
 
     [Group("uber-bot", "UB3R-B0T")]
     public partial class UberBotModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
+        private Task<ImportProcess> StartImport(string name, string clarifier = "") =>
+            ImportProcess.Start(Context, name, clarifier);
+
         [GeneratedRegex("\\.quote add \"(.*)\" - (.*)",
             RegexOptions.Singleline | RegexOptions.CultureInvariant | RegexOptions.Compiled)]
         private static partial Regex QuoteAddRegex();
