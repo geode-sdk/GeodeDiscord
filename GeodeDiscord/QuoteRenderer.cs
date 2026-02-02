@@ -247,10 +247,14 @@ public class QuoteRenderer(ApplicationDbContext db, SocketInteractionContext con
             }
         }
 
-        await ModifyMessageAsync(quoteMsg, msg => {
-            msg.Attachments = new Optional<IEnumerable<FileAttachment>>(galleryUploads.Concat(updatedUploads));
-            msg.Embeds = finalEmbeds;
-        });
+        if (updatedUploads.Count > 0) {
+            await ModifyMessageAsync(
+                quoteMsg, msg => {
+                    msg.Attachments = new Optional<IEnumerable<FileAttachment>>(galleryUploads.Concat(updatedUploads));
+                    msg.Embeds = finalEmbeds;
+                }
+            );
+        }
 
         if (dbNeedsSave) {
             try { await db.SaveChangesAsync(); }
