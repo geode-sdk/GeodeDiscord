@@ -20,24 +20,16 @@ public class StickyModule(ApplicationDbContext db) : InteractionModuleBase<Socke
     [SlashCommand("add", "Adds a sticky role to the user."), UsedImplicitly]
     public async Task Add(IRole role, IGuildUser user) {
         if (await db.stickyRoles.AnyAsync(x => x.userId == user.Id && x.roleId == role.Id)) {
-            await RespondAsync("❌ This user already has this role as sticky!", ephemeral: true);
-            return;
+            throw new MessageErrorException("This user already has this role as sticky!");
         }
 
         try { await user.AddRoleAsync(role); }
         catch (Exception ex) {
-            Log.Error(ex, "Failed to add role to user");
-            await RespondAsync($"❌ Failed to add role to user:\n{ex.Message}", ephemeral: true);
-            return;
+            throw new MessageErrorException($"Failed to add role to user:\n{ex.Message}");
         }
 
         db.stickyRoles.Add(new StickyRole { userId = user.Id, roleId = role.Id });
-        try { await db.SaveChangesAsync(); }
-        catch (Exception ex) {
-            Log.Error(ex, "Failed to save sticky role");
-            await RespondAsync("❌ Failed to save sticky role!", ephemeral: true);
-            return;
-        }
+        await db.SaveChangesAsync();
 
         await RespondAsync(
             $"✅ Successfully added sticky role {role.Mention} to {user.Mention}!",
@@ -49,24 +41,16 @@ public class StickyModule(ApplicationDbContext db) : InteractionModuleBase<Socke
     public async Task Remove(IRole role, IGuildUser user) {
         StickyRole? sr = await db.stickyRoles.FirstOrDefaultAsync(x => x.userId == user.Id && x.roleId == role.Id);
         if (sr is null) {
-            await RespondAsync("❌ This user does not have this role as sticky!", ephemeral: true);
-            return;
+            throw new MessageErrorException("This user does not have this role as sticky!");
         }
 
         try { await user.RemoveRoleAsync(role); }
         catch (Exception ex) {
-            Log.Error(ex, "Failed to remove role from user");
-            await RespondAsync($"❌ Failed to remove role from user:\n{ex.Message}", ephemeral: true);
-            return;
+            throw new MessageErrorException($"Failed to remove role from user:\n{ex.Message}");
         }
 
         db.stickyRoles.Remove(sr);
-        try { await db.SaveChangesAsync(); }
-        catch (Exception ex) {
-            Log.Error(ex, "Failed to save sticky role");
-            await RespondAsync("❌ Failed to save sticky role!", ephemeral: true);
-            return;
-        }
+        await db.SaveChangesAsync();
 
         await RespondAsync(
             $"✅ Successfully removed sticky role {role.Mention} from {user.Mention}!",
@@ -82,8 +66,7 @@ public class StickyModule(ApplicationDbContext db) : InteractionModuleBase<Socke
             .Select(x => $"- <@&{x.roleId}>");
         string list = string.Join("\n", lines);
         if (list.Length == 0) {
-            await RespondAsync("❌ No sticky roles found!", ephemeral: true);
-            return;
+            throw new MessageErrorException("No sticky roles found!");
         }
         await RespondAsync($"📜 {user.Mention}'s sticky roles:\n{list}", allowedMentions: AllowedMentions.None);
     }

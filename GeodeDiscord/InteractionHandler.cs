@@ -3,7 +3,8 @@
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 
 namespace GeodeDiscord;
@@ -11,9 +12,17 @@ namespace GeodeDiscord;
 public class InteractionHandler(DiscordSocketClient client, InteractionService handler, IServiceProvider services) {
     public async Task InitializeAsync() {
         client.Ready += ReadyAsync;
-        client.InteractionCreated += HandleInteraction;
+        client.InteractionCreated += interaction => {
+            Task.Run(async () => await HandleInteraction(interaction).ConfigureAwait(false));
+            return Task.CompletedTask;
+        };
 
         handler.Log += log => {
+            // ignore interaction exceptions, handle them manually in the interaction handler
+            // discord.net *really* wants to try and handle them itself
+            // so i have to do a bunch of hacks to get around it
+            //if (log.Exception is InteractionException)
+            //    return Task.CompletedTask;
             Log.Write(Util.DiscordToSerilogLevel(log.Severity), log.Exception, "[{Source}] {Message}", log.Source,
                 log.Message);
             return Task.CompletedTask;
@@ -44,17 +53,42 @@ public class InteractionHandler(DiscordSocketClient client, InteractionService h
 
     private async Task HandleInteraction(SocketInteraction interaction) {
         try {
-            SocketInteractionContext context = new(client, interaction);
-            IResult? result = await handler.ExecuteCommandAsync(context, services);
+            IResult? result;
+            await using (AsyncServiceScope scope = services.CreateAsyncScope()) {
+                scope.ServiceProvider.GetRequiredService<InteractionProvider>().interaction = interaction;
+                SocketInteractionContext context = scope.ServiceProvider.GetRequiredService<SocketInteractionContext>();
+                result = await handler.ExecuteCommandAsync(context, scope.ServiceProvider);
+            }
             if (result.IsSuccess)
                 return;
-            Log.Error("Error handling interaction: {Error}. {Reason}", result.Error, result.ErrorReason);
+            Exception? exception = null;
+            if (result.Error == InteractionCommandError.Exception && result is ExecuteResult executeResult) {
+                exception = executeResult.Exception;
+                while (exception is not null &&
+                    exception is not MessageErrorException &&
+                    exception is not DbUpdateException &&
+                    exception is not DbUpdateConcurrencyException)
+                    exception = exception.InnerException;
+                switch (exception) {
+                    case MessageErrorException messageError:
+                        await InteractionError(messageError.Message);
+                        return;
+                    case DbUpdateException or DbUpdateConcurrencyException:
+                        Log.Error(executeResult.Exception, "Failed to save database changes");
+                        await InteractionError("Failed to save database changes!");
+                        return;
+                    default:
+                        exception = executeResult.Exception;
+                        break;
+                }
+            }
+            Log.Error(exception, "Error handling interaction: {Error}. {Reason}", result.Error, result.ErrorReason);
             switch (result.Error) {
                 case InteractionCommandError.UnmetPrecondition:
-                    await interaction.RespondAsync($"❌ Unmet precondition! ({result.ErrorReason})");
+                    await InteractionError($"Unmet precondition! ({result.ErrorReason})");
                     break;
                 default:
-                    await interaction.RespondAsync($"❌ Unknown error! ({result.ErrorReason})");
+                    await InteractionError($"Unknown error! ({result.ErrorReason})");
                     break;
             }
         }
@@ -63,6 +97,11 @@ public class InteractionHandler(DiscordSocketClient client, InteractionService h
             if (interaction.Type is InteractionType.ApplicationCommand)
                 await interaction.GetOriginalResponseAsync().ContinueWith(async msg => await msg.Result.DeleteAsync());
         }
+        return;
+
+        Task InteractionError(string message) => interaction.HasResponded ?
+            interaction.FollowupAsync($"❌ {message}", ephemeral: true) :
+            interaction.RespondAsync($"❌ {message}", ephemeral: true);
     }
 
     public async Task TeardownAsync() {

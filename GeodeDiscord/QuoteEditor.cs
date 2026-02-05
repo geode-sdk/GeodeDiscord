@@ -1,0 +1,206 @@
+﻿using Discord;
+using Discord.Interactions;
+using GeodeDiscord.Database;
+using GeodeDiscord.Database.Entities;
+using Microsoft.EntityFrameworkCore;
+using Serilog;
+
+namespace GeodeDiscord;
+
+public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext context) {
+    public async Task<Quote> Create(IMessage message) {
+        IMessageChannel? channel = await context.Interaction.GetChannelAsync();
+        if (channel is not null) {
+            IMessage? realMessage = await channel.GetMessageAsync(message.Id);
+            if (realMessage is not null)
+                message = realMessage;
+        }
+
+        if (db.quotes.Any(q => q.messageId == message.Id)) {
+            throw new MessageErrorException("This message is already quoted!");
+        }
+
+        if (message.Flags is not null && (message.Flags & MessageFlags.ComponentsV2) != 0) {
+            throw new MessageErrorException(
+                "Components v2 messages are not supported (yet?)\n" +
+                "-# if u rlly wanna quote this u can ask me to add it to the db manually " +
+                "and maybe someday i will add a components v2 renderer for actually viewing the quote"
+            );
+        }
+
+        int max = !await db.quotes.AnyAsync() ? 0 : await db.quotes.Select(x => x.id).MaxAsync();
+        Quote quote = await MessageToQuote(context.User.Id, max, message, context.Interaction.CreatedAt);
+        db.Add(quote with { id = max + 1 });
+
+        OnSave(quote, true, () => Log.Information(
+            "{User} created quote {Id} from {MessageId}",
+            context.User.Id, quote.GetFullName(), quote.messageId
+        ));
+
+        return quote;
+    }
+
+    public void Rename(Quote quote, string newName) {
+        string oldName = quote.GetFullName();
+        quote.name = newName.Trim();
+
+        OnSave(quote, true, () => Log.Information(
+            "{User} renamed quote {OldName} to {NewName}",
+            context.User.Id, oldName, quote.GetFullName()
+        ));
+    }
+
+    public void Delete(Quote quote) {
+        db.Remove(quote);
+
+        OnSave(quote, false, () => Log.Information(
+            "{User} deleted quote {Name}",
+            context.User.Id, quote.GetFullName()
+        ));
+    }
+
+    public async Task Update(Quote quote) {
+        if (quote.channelId == 0)
+            throw new MessageErrorException("Failed to update quote! (channel ID not set)");
+
+        IMessageChannel? channel = context.Guild.GetTextChannel(quote.channelId) ??
+            context.Guild.GetStageChannel(quote.channelId) ??
+            context.Guild.GetVoiceChannel(quote.channelId);
+        if (channel is null)
+            throw new MessageErrorException($"Failed to update quote! (channel {quote.channelId} not found)");
+
+        IMessage? message = await channel.GetMessageAsync(quote.messageId);
+        if (message is null)
+            throw new MessageErrorException($"Failed to update quote! (message {quote.messageId} not found)");
+
+        Update(quote, await MessageToQuote(quote.quoterId, quote.id, message, context.Interaction.CreatedAt, quote));
+    }
+
+    public void Update(Quote oldQuote, Quote newQuote) {
+        if (oldQuote.messageId != newQuote.messageId)
+            throw new InvalidOperationException("Cannot change message ID of a quote");
+        db.Remove(oldQuote);
+        db.Update(newQuote);
+
+        OnSave(newQuote, true, () => Log.Information(
+            "{User} updated quote {OldName} to {NewName}",
+            context.User.Id, oldQuote.GetFullName(), newQuote.GetFullName()
+        ));
+    }
+
+    private static event Action<Quote, bool>? onUpdate;
+    public async Task<Quote?> WaitForUpdateAsync(Quote quote) {
+        TaskCompletionSource<Quote?> tcs = new();
+
+        onUpdate += HandleUpdate;
+        Quote? result = await tcs.Task.ConfigureAwait(false);
+        onUpdate -= HandleUpdate;
+
+        return result;
+
+        void HandleUpdate(Quote newQuote, bool exists) {
+            if (newQuote.messageId != quote.messageId)
+                return;
+            tcs.SetResult(exists ? newQuote : null);
+        }
+    }
+
+    private readonly Dictionary<ulong, (Quote quote, bool exists)> _pendingChanges = [];
+    private void OnSave(Quote quote, bool exists, Action? log) {
+        if (_pendingChanges.TryGetValue(quote.messageId, out (Quote quote, bool exists) change)) {
+            exists = exists && change.exists;
+        }
+        else {
+            db.SavedChanges += SuccessHandler;
+            db.SaveChangesFailed += FailHandler;
+        }
+        _pendingChanges[quote.messageId] = (quote, exists);
+        return;
+
+        void SuccessHandler(object? sender, SavedChangesEventArgs args) {
+            // TODO: figure out logs
+            //log?.Invoke();
+            (Quote quote, bool exists) pending = _pendingChanges[quote.messageId];
+            onUpdate?.Invoke(pending.quote, pending.exists);
+            _pendingChanges.Remove(quote.messageId);
+            db.SavedChanges -= SuccessHandler;
+            db.SaveChangesFailed -= FailHandler;
+        }
+        void FailHandler(object? sender, SaveChangesFailedEventArgs args) {
+            db.SavedChanges -= SuccessHandler;
+            db.SaveChangesFailed -= FailHandler;
+        }
+    }
+
+    private static async Task<IMessage?> GetForwardedAsync(IMessage message) {
+        if (message.Channel is null || message.Reference is null ||
+            message.Reference.ChannelId != message.Channel.Id ||
+            !message.Reference.MessageId.IsSpecified ||
+            message.Reference.ReferenceType.GetValueOrDefault() != MessageReferenceType.Forward)
+            return null;
+        ulong refMessageId = message.Reference.MessageId.Value;
+        IMessage? refMessage = await message.Channel.GetMessageAsync(refMessageId);
+        return refMessage ?? null;
+    }
+
+    private static async Task<Quote> MessageToQuote(ulong quoterId, int id, IMessage message,
+        DateTimeOffset timestamp, Quote? original = null) {
+        while (true) {
+            // if we're just quoting a forwarded message, quote the forwarded message instead
+            IMessage? forwarded = await GetForwardedAsync(message);
+            if (forwarded is not null) {
+                message = forwarded;
+                continue;
+            }
+
+            IMessage? reply = await Util.GetReplyAsync(message);
+            return new Quote {
+                id = id,
+                name = original?.name ?? "",
+                messageId = message.Id,
+                channelId = message.Channel?.Id ?? 0,
+                createdAt = original?.createdAt ?? timestamp,
+                lastEditedAt = timestamp,
+                quoterId = quoterId,
+                authorId = message.Author.Id,
+                jumpUrl = message.Channel is null ? null : message.GetJumpUrl(),
+                attachments = [..message.Attachments.Select(x => new Quote.Attachment {
+                    id = x.Id,
+                    name = string.IsNullOrWhiteSpace(x.Title) ? x.Filename : x.Title + Path.GetExtension(x.Filename),
+                    size = x.Size,
+                    url = x.Url,
+                    contentType = x.ContentType,
+                    description = x.Description,
+                    isSpoiler = x.Filename.StartsWith("SPOILER_") // seems to be the actual condition
+                })],
+                embeds = [..message.Embeds.Select(x => new Quote.Embed {
+                    type = x.Type,
+                    color = x.Color,
+                    providerName = x.Provider?.Name,
+                    providerUrl = x.Provider?.Url,
+                    authorIconUrl = x.Author?.IconUrl,
+                    authorName = x.Author?.Name,
+                    authorUrl = x.Author?.Url,
+                    title = x.Title,
+                    url = x.Url,
+                    thumbnailUrl = x.Thumbnail?.Url,
+                    description = x.Description,
+                    fields = [..x.Fields.Select(y => new Quote.Embed.Field {
+                        name = y.Name,
+                        value = y.Value,
+                        inline = y.Inline
+                    })],
+                    videoUrl = x.Video?.Url,
+                    imageUrl = x.Image?.Url,
+                    footerIconUrl = x.Footer?.IconUrl,
+                    footerText = x.Footer?.Text,
+                    timestamp = x.Timestamp
+                })],
+                content = message.Content,
+                replyAuthorId = reply?.Author.Id ?? 0,
+                replyMessageId = reply?.Id ?? 0,
+                replyContent = reply?.Content ?? ""
+            };
+        }
+    }
+}

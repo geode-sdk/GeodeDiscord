@@ -35,10 +35,24 @@ public static class Program {
         .AddSingleton<DiscordSocketClient>()
         .AddSingleton<IRestClientProvider>(x => x.GetRequiredService<DiscordSocketClient>())
         .AddSingleton(new InteractionServiceConfig {
-            InteractionCustomIdDelimiters = ['/']
+            InteractionCustomIdDelimiters = ['/'],
+            DefaultRunMode = RunMode.Sync, // i wanna handle my errors myself so i implement async myself :-)
+            AutoServiceScopes = false
         })
         .AddSingleton<InteractionService>()
         .AddSingleton<InteractionHandler>()
+        .AddScoped<InteractionProvider>()
+        .AddScoped<SocketInteractionContext>(x => {
+            InteractionProvider interactionProvider = x.GetRequiredService<InteractionProvider>();
+            if (interactionProvider.interaction is null)
+                return null!; // i dont care lol
+            return new SocketInteractionContext(
+                x.GetRequiredService<DiscordSocketClient>(),
+                interactionProvider.interaction
+            );
+        })
+        .AddScoped<QuoteEditor>()
+        .AddSingleton<QuoteRenderer>()
         .BuildServiceProvider();
 
     private class ListSink : ILogEventSink {
@@ -60,6 +74,14 @@ public static class Program {
             .CreateLogger();
 
         PatchEfCoreSqlite();
+
+        services.GetRequiredService<ApplicationDbContext>().SavedChanges += (_, args) => {
+            Log.Information(
+                "Saved {Count} {EntityNoun}",
+                args.EntitiesSavedCount,
+                args.EntitiesSavedCount == 1 ? "entity" : "entities"
+            );
+        };
 
         DiscordSocketClient client = services.GetRequiredService<DiscordSocketClient>();
 

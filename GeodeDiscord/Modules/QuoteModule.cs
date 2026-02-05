@@ -12,120 +12,108 @@ using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore;
 
 using Serilog;
-using Attachment = GeodeDiscord.Database.Entities.Attachment;
 
 namespace GeodeDiscord.Modules;
 
 [Group("quote", "Quote other people's messages."), UsedImplicitly]
-public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
-    private static event Func<Quote, bool, Task>? onUpdate;
-
+public partial class QuoteModule(ApplicationDbContext db, QuoteEditor editor, QuoteRenderer renderer) :
+    InteractionModuleBase<SocketInteractionContext> {
     [MessageCommand("Add quote"), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task Add(IMessage message) {
         await DeferAsync();
 
-        IMessageChannel? channel = await Context.Interaction.GetChannelAsync();
-        if (channel is not null) {
-            IMessage? realMessage = await channel.GetMessageAsync(message.Id);
-            if (realMessage is not null)
-                message = realMessage;
-        }
-
-        if (db.quotes.Any(q => q.messageId == message.Id)) {
-            await FollowupAsync("❌ This message is already quoted!", ephemeral: true);
-            return;
-        }
-
-        int max = !await db.quotes.AnyAsync() ? 0 : await db.quotes.Select(x => x.id).MaxAsync();
-
-        Quote quote = await Util.MessageToQuote(db, Context.User.Id, max + 1, message);
-        db.Add(quote);
-
-        try { await db.SaveChangesAsync(); }
-        catch (Exception ex) {
-            Log.Error(ex, "Failed to save quote");
-            await FollowupAsync("❌ Failed to save quote!", ephemeral: true);
-            return;
-        }
+        Quote quote = await editor.Create(message);
+        await db.SaveChangesAsync();
 
         IUserMessage response = await FollowupAsync(
-            GetAddMessageContent(quote, true, false),
             allowedMentions: AllowedMentions.None,
-            components: GetAddMessageComponents(quote, true, false)
+            components: await GetAddMessageComponents(quote, true, false, false)
         );
-        await ContinueAddQuote(quote.messageId, [response]);
+        await ContinueAddQuote(quote, response, false);
     }
 
-    private async Task ContinueAddQuote(ulong quoteMessage, List<IUserMessage> response) {
-        onUpdate += OnUpdate;
-        SocketInteraction? interaction = await InteractionUtility.WaitForInteractionAsync(Context.Client,
-            TimeSpan.FromSeconds(20d),
-            inter => inter.Type switch {
-                InteractionType.MessageComponent => inter is SocketMessageComponent msg &&
-                    msg.Message.Id == response[0].Id &&
-                    msg.Data.CustomId == $"quote/get-button:{quoteMessage}",
-                _ => false
-            });
-        onUpdate -= OnUpdate;
-        // if timed out, remove the buttons
-        if (interaction is null) {
-            await response[0].ModifyAsync(msg => msg.Components = new ComponentBuilder().Build());
-            return;
-        }
-        if (await db.quotes.FindAsync(quoteMessage) is not { } currentQuote)
-            return;
-        await UpdateAddMessage(currentQuote, true, true);
-        await ContinueAddQuote(quoteMessage, response);
-        return;
+    private async Task ContinueAddQuote(Quote quote, IUserMessage response, bool show) {
+        bool setShow = false;
+        bool exists = true;
+        Quote waitingQuote = quote;
+        bool finished = await await Task.WhenAny(
+            new Func<Task<bool>>(async () => {
+                await Task.Delay(TimeSpan.FromSeconds(20.0));
+                return true;
+            })(),
+            new Func<Task<bool>>(async () => {
+                await Util.WaitForInteractionAsync(
+                    Context.Client, inter => inter.Type switch {
+                        InteractionType.MessageComponent => inter is SocketMessageComponent msg &&
+                            msg.Message.Id == response.Id &&
+                            msg.Data.CustomId == $"quote/get-button:{waitingQuote.messageId}",
+                        _ => false
+                    }
+                );
+                setShow = true;
+                return false;
+            })(),
+            new Func<Task<bool>>(async () => {
+                Quote? updatedQuote = await editor.WaitForUpdateAsync(waitingQuote);
+                if (updatedQuote is null) {
+                    exists = false;
+                    return true;
+                }
+                quote = updatedQuote;
+                return false;
+            })()
+        );
 
-        async Task OnUpdate(Quote quote, bool exists) {
-            // OnUpdate can be called from outside here even when multiple interaction is current,
-            // causing all interactions to get updated with the same message
-            if (quote.messageId != quoteMessage)
-                return;
-            await UpdateAddMessage(quote, exists, false);
-        }
-        async Task UpdateAddMessage(Quote quote, bool exists, bool setShow) {
-            bool hasEmbeds = response[0].Embeds.Count > 0;
-            bool show = exists && (hasEmbeds || setShow);
+        show = exists && (show || setShow);
+
+        MessageComponent components = await GetAddMessageComponents(quote, exists, show, finished);
+        await response.ModifyAsync(msg => {
+            msg.AllowedMentions = AllowedMentions.None;
+            msg.Components = components;
+        });
+
+        if (!finished)
+            await ContinueAddQuote(quote, response, show);
+    }
+
+    private async Task<MessageComponent> GetAddMessageComponents(Quote quote, bool exists, bool show, bool finished) {
+        ComponentBuilderV2 builder = new();
+
+        IMessageComponentBuilder[] renderedQuote = await renderer.Render(quote).ToArrayAsync();
+
+        // not gonna be 100% accurate but close enough
+        // delay by like a second bc yeah
+        DateTimeOffset timeoutTimestamp = DateTimeOffset.Now + TimeSpan.FromSeconds(21.0);
+        string timeoutTime = finished ? "" : $"<t:{timeoutTimestamp.ToUnixTimeSeconds()}:R>";
+
+        if (exists) {
             if (show) {
-                QuoteRenderer renderer = new(db, Context);
-                response = await renderer.Render(quote, async (embeds, attachments) => {
-                    await response[0].ModifyAsync(msg => {
-                        msg.Attachments = new Optional<IEnumerable<FileAttachment>>(attachments);
-                        msg.Content = GetAddMessageContent(quote, exists, true);
-                        msg.Embeds = embeds;
-                        msg.Components = GetAddMessageComponents(quote, exists, true);
-                    });
-                    return response[0];
-                }, response);
+                builder.WithTextDisplay($"{timeoutTime}Quote saved!");
+                builder.AddComponents(renderedQuote);
             }
             else {
-                await response[0].ModifyAsync(msg => {
-                    msg.Attachments = new Optional<IEnumerable<FileAttachment>>([]);
-                    msg.Content = GetAddMessageContent(quote, exists, false);
-                    msg.Embeds = new Optional<Embed[]>([]);
-                    msg.Components = GetAddMessageComponents(quote, exists, false);
-                });
-                foreach (IUserMessage message in response.Skip(1)) {
-                    await message.DeleteAsync();
-                }
+                builder.WithTextDisplay($"{timeoutTime}Quote {quote.jumpUrl} saved as **{quote.GetFullName()}**!");
             }
         }
-    }
-    private static string GetAddMessageContent(Quote quote, bool exists, bool show) =>
-        exists ? show ? "Quote saved!" : $"Quote {quote.jumpUrl} saved as **{quote.GetFullName()}**!" :
-            $"~~Quote {quote.jumpUrl} saved as *{quote.GetFullName()}*!~~";
-    private static MessageComponent GetAddMessageComponents(Quote quote, bool exists, bool show) =>
-        !exists ? new ComponentBuilder().Build() :
-            new ComponentBuilder()
-                .WithButton("Show", $"quote/get-button:{quote.messageId}", ButtonStyle.Secondary,
+        else {
+            builder.WithTextDisplay($"{timeoutTime}~~Quote {quote.jumpUrl} saved as *{quote.GetFullName()}*!~~");
+        }
+        if (!finished) {
+            builder.WithActionRow(x => x
+                .WithButton(
+                    "Show", $"quote/get-button:{quote.messageId}", ButtonStyle.Secondary,
                     new Emoji("🚿"), null, show)
-                .WithButton("Rename", $"quote/sensitive/rename-button:{quote.messageId}", ButtonStyle.Secondary,
+                .WithButton(
+                    "Rename", $"quote/sensitive/rename-button:{quote.messageId}", ButtonStyle.Secondary,
                     new Emoji("📝"))
-                .WithButton("Delete", $"quote/sensitive/delete-button:{quote.messageId}", ButtonStyle.Secondary,
+                .WithButton(
+                    "Delete", $"quote/sensitive/delete-button:{quote.messageId}", ButtonStyle.Secondary,
                     new Emoji("❌"))
-                .Build();
+            );
+        }
+        return builder.Build();
+    }
+
     [ComponentInteraction("get-button:*"), UsedImplicitly]
     private async Task GetButton(string messageId) => await DeferAsync();
 
@@ -161,52 +149,38 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
     [SuppressMessage("ReSharper", "EntityFramework.ClientSideDbFunctionCall")]
     [SlashCommand("random", "Gets a random quote."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task GetRandom(IUser? user = null) {
-        if (user is null ? !db.quotes.Any() : !db.quotes.Any(q => q.authorId == user.Id)) {
-            await RespondAsync("❌ There are no quotes of this user yet!", ephemeral: true);
-            return;
-        }
+        if (user is null ? !db.quotes.Any() : !db.quotes.Any(q => q.authorId == user.Id))
+            throw new MessageErrorException("There are no quotes of this user yet!");
         Quote quote = await (user is null ? db.quotes : db.quotes.Where(q => q.authorId == user.Id))
             .OrderBy(_ => EF.Functions.Random())
             .FirstAsync();
-        QuoteRenderer renderer = new(db, Context);
-        await renderer.Render(quote, async (embeds, attachments) => {
-            await RespondWithFilesAsync(
-                attachments: attachments,
-                allowedMentions: AllowedMentions.None,
-                embeds: embeds
-            );
-            return await GetOriginalResponseAsync();
-        });
+        await DeferAsync();
+        await FollowupAsync(
+            allowedMentions: AllowedMentions.None,
+            components: new ComponentBuilderV2(await renderer.Render(quote).ToListAsync()).Build()
+        );
     }
 
     [SlashCommand("get", "Gets a quote with the specified ID."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task Get([Autocomplete(typeof(QuoteAutocompleteHandler))] int id) {
         Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
-        if (quote is null) {
-            await RespondAsync("❌ Quote not found!", ephemeral: true);
-            return;
-        }
-        QuoteRenderer renderer = new(db, Context);
-        await renderer.Render(quote, async (embeds, attachments) => {
-            await RespondWithFilesAsync(
-                attachments: attachments,
-                allowedMentions: AllowedMentions.None,
-                embeds: embeds
-            );
-            return await GetOriginalResponseAsync();
-        });
+        if (quote is null)
+            throw new MessageErrorException("Quote not found!");
+        await DeferAsync();
+        await FollowupAsync(
+            allowedMentions: AllowedMentions.None,
+            components: new ComponentBuilderV2(await renderer.Render(quote).ToListAsync()).Build()
+        );
     }
 
     [SlashCommand("info", "Gets all stored information for a quote with the specified ID."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task Info([Autocomplete(typeof(QuoteAutocompleteHandler))] int id) {
         Quote? quote = await db.quotes
-            .Include(quote => quote.files)
-            .Include(quote => quote.embeds)
+            .Include(x => x.attachments)
+            .Include(x => x.embeds)
             .FirstOrDefaultAsync(q => q.id == id);
-        if (quote is null) {
-            await RespondAsync("❌ Quote not found!", ephemeral: true);
-            return;
-        }
+        if (quote is null)
+            throw new MessageErrorException("Quote not found!");
         StringBuilder builder = new();
         // defer in case getting the channel and all the users is slow
         await DeferAsync();
@@ -224,32 +198,16 @@ public partial class QuoteModule(ApplicationDbContext db) : InteractionModuleBas
         builder.AppendLine($"- Author: `{quote.authorId}` `{author?.GlobalName ?? "<unknown>"}` `@{author?.Username ?? "<unknown>"}` <@{quote.authorId}>");
         builder.AppendLine($"- Reply author: `{quote.replyAuthorId}` `{replyAuthor?.GlobalName ?? "<unknown>"}` `@{replyAuthor?.Username ?? "<unknown>"}` <@{quote.replyAuthorId}>");
         builder.AppendLine("- Files:");
-        foreach (Attachment file in quote.files)
-            builder.AppendLine($"  - `{file.contentType}` `{file.url}` {file.url}");
+        foreach (Quote.Attachment file in quote.attachments)
+            builder.AppendLine($"  - `{file.id}` `{file.name}` `{file.size}` `{file.url}` `{file.contentType}` `{file.description}` {file.url}");
         builder.AppendLine("- Embeds:");
-        foreach (Attachment embed in quote.embeds)
-            builder.AppendLine($"  - `{embed.contentType}` `{embed.url}` {embed.url}");
+        foreach (Quote.Embed embed in quote.embeds)
+            builder.AppendLine($"  - {embed.url}");
         builder.AppendLine($"- Content: `{quote.content}`");
         await FollowupAsync(
             text: builder.ToString(),
             allowedMentions: AllowedMentions.None
         );
-    }
-
-    [ComponentInteraction("guess-again"), UsedImplicitly]
-    private Task GuessAgainOld() {
-        GuessModule module = new(db);
-        (module as IInteractionModuleBase).SetContext(Context);
-        return Context.Guild.Id == 911701438269386882 && Context.Channel.Id != 1102573869832876042 ?
-            RespondAsync("❌ Can only guess again old messages in <#1102573869832876042>!", ephemeral: true) :
-            module.Guess();
-    }
-
-    [ComponentInteraction("guess-fix-names"), UsedImplicitly]
-    private Task GuessFixNamesOld() {
-        GuessModule module = new(db);
-        (module as IInteractionModuleBase).SetContext(Context);
-        return module.GuessFixNames();
     }
 
     public class QuoteAutocompleteHandler(ApplicationDbContext db) : AutocompleteHandler {

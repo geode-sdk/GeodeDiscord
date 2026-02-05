@@ -15,7 +15,8 @@ using Serilog;
 namespace GeodeDiscord.Modules;
 
 [Group("guess", "Play guess with quotes!"), UsedImplicitly]
-public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
+public partial class GuessModule(ApplicationDbContext db, QuoteRenderer renderer) :
+    InteractionModuleBase<SocketInteractionContext> {
     private async Task<string?> GetUserNameAsync(ulong id) {
         IUser? user = await Util.GetUserAsync(Context.Client, id);
         return user?.GlobalName ?? user?.Username ?? null;
@@ -43,10 +44,8 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             break;
         }
 
-        if (quote is null || quoteAuthorName is null) {
-            await RespondAsync("❌ Couldn't find a quote!", ephemeral: true);
-            return;
-        }
+        if (quote is null || quoteAuthorName is null)
+            throw new MessageErrorException("Couldn't find a quote, please try again.");
 
         HashSet<(ulong id, string name)> selectedUsers = [ (quote.authorId, quoteAuthorName) ];
 
@@ -87,24 +86,21 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         (ulong id, string name)[] users = selectedUsers.ToArray();
         Random.Shared.Shuffle(users);
 
-        QuoteRenderer renderer = new(db, Context);
-
-        ComponentBuilder components = new();
+        ActionRowBuilder buttons = new();
         foreach ((ulong id, string name) in users) {
-            components.WithButton(
+            buttons.WithButton(
                 name,
                 $"guess/guess-button:{id}"
             );
         }
-        List<IUserMessage> render =
-            await renderer.RenderCensored(quote, (embeds, attachments) => FollowupWithFilesAsync(
-                attachments: attachments,
-                text: $"## {Context.User.Mention}, who said this?",
-                allowedMentions: AllowedMentions.None,
-                embeds: embeds,
-                components: components.Build()
-            ));
-        IUserMessage response = render[0];
+        IUserMessage response = await FollowupAsync(
+            allowedMentions: AllowedMentions.None,
+            components: new ComponentBuilderV2()
+                .WithTextDisplay($"## {Context.User.Mention}, who said this?")
+                .AddComponents(await renderer.RenderCensored(quote).ToArrayAsync())
+                .WithActionRow(buttons)
+                .Build()
+        );
 
         SocketMessageComponent? interaction = await InteractionUtility.WaitForInteractionAsync(
             Context.Client,
@@ -143,7 +139,9 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
         });
 
         bool saveFail = false;
-        try { await db.SaveChangesAsync(); }
+        try {
+            await db.SaveChangesAsync();
+        }
         catch (Exception ex) {
             Log.Error(ex, "Failed to save stats");
             saveFail = true;
@@ -215,77 +213,55 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             content.AppendLine("-# ⚠️ Failed to save stats, sorry... :<");
         }
 
-        await renderer.Render(quote, async (embeds, attachments) => {
-            await response.ModifyAsync(x => {
-                x.Attachments = new Optional<IEnumerable<FileAttachment>>(attachments);
-                x.Content = content.ToString();
-                x.AllowedMentions = AllowedMentions.None;
-                x.Embeds = embeds;
-                ComponentBuilder component = new ComponentBuilder()
-                    .WithButton("Guess again!", "guess/guess-again", ButtonStyle.Primary, new Emoji("❓"));
-                if (guessId != 0)
-                    component.WithButton("Fix names", "guess/guess-fix-names", ButtonStyle.Secondary, new Emoji("🔧"));
-                x.Components = component.Build();
-            });
-            return response;
-        }, render);
+        IMessageComponentBuilder[] renderedQuote = await renderer.Render(quote).ToArrayAsync();
+        await response.ModifyAsync(msg => {
+            msg.AllowedMentions = AllowedMentions.None;
+            msg.Components = new ComponentBuilderV2()
+                .WithTextDisplay(content.ToString())
+                .AddComponents(renderedQuote)
+                .WithActionRow(x => {
+                    x.WithButton("Guess again!", "guess/guess-again", ButtonStyle.Primary, new Emoji("❓"));
+                    //if (guessId != 0)
+                    //    x.WithButton("Fix names", "guess/guess-fix-names", ButtonStyle.Secondary, new Emoji("🔧"));
+                })
+                .Build();
+        });
     }
 
     [ComponentInteraction("guess-button:*"), UsedImplicitly]
     private async Task GuessButton(string guessId) {
-        if (Context.Interaction is not SocketMessageComponent interaction) {
-            await RespondAsync(
-                text: "❌ Failed to check interaction user: interaction is not from a message..?",
-                ephemeral: true
-            );
-            return;
-        }
-        if (interaction.User.Id != interaction.Message.InteractionMetadata.User.Id) {
-            await RespondAsync(
-                text: "❌ Only the user that started the game can make a guess!",
-                ephemeral: true
-            );
-            return;
-        }
+        if (Context.Interaction is not SocketMessageComponent interaction)
+            throw new MessageErrorException("Failed to check interaction user: interaction is not from a message..?");
+        if (interaction.User.Id != interaction.Message.InteractionMetadata.User.Id)
+            throw new MessageErrorException("Only the user that started the game can make a guess!");
         // let Guess do its thing
         await DeferAsync();
     }
 
+    // TODO: update this, lol
     [ComponentInteraction("guess-fix-names"), UsedImplicitly]
     public async Task GuessFixNames() {
-        if (Context.Interaction is not SocketMessageComponent interaction) {
-            await RespondAsync("❌ Failed to fix names: interaction is not from a message..?", ephemeral: true);
-            return;
-        }
+        if (Context.Interaction is not SocketMessageComponent interaction)
+            throw new MessageErrorException("Failed to fix names: interaction is not from a message..?");
 
         SocketUserMessage msg = interaction.Message;
         Embed? embed = msg.Embeds.FirstOrDefault();
-        if (embed?.Author?.Name is null) {
-            await RespondAsync("❌ Failed to fix names: unable to detect quote!", ephemeral: true);
-            return;
-        }
+        if (embed?.Author?.Name is null)
+            throw new MessageErrorException("Failed to fix names: unable to detect quote!");
 
         Match? authorMatch = AuthorIdRegex().Matches(embed.Description).LastOrDefault();
-        if (authorMatch is null || !authorMatch.Success || !authorMatch.Groups[1].Success) {
-            await RespondAsync("❌ Failed to fix names: unable to detect quote author!", ephemeral: true);
-            return;
-        }
+        if (authorMatch is null || !authorMatch.Success || !authorMatch.Groups[1].Success)
+            throw new MessageErrorException("Failed to fix names: unable to detect quote author!");
 
-        if (!ulong.TryParse(authorMatch.Groups[1].ValueSpan, out ulong authorId)) {
-            await RespondAsync("❌ Failed to fix names: unable to parse quote author ID!", ephemeral: true);
-            return;
-        }
+        if (!ulong.TryParse(authorMatch.Groups[1].ValueSpan, out ulong authorId))
+            throw new MessageErrorException("Failed to fix names: unable to parse quote author ID!");
 
         Match match = ShowedIdRegex().Match(msg.Content);
-        if (!match.Success || !match.Groups[1].Success) {
-            await RespondAsync("❌ Failed to fix names: unable to detect showed ID!", ephemeral: true);
-            return;
-        }
+        if (!match.Success || !match.Groups[1].Success)
+            throw new MessageErrorException("Failed to fix names: unable to detect showed ID!");
 
-        if (!ulong.TryParse(match.Groups[1].ValueSpan, out ulong showedId)) {
-            await RespondAsync("❌ Failed to fix names: unable to parse showed ID!", ephemeral: true);
-            return;
-        }
+        if (!ulong.TryParse(match.Groups[1].ValueSpan, out ulong showedId))
+            throw new MessageErrorException("Failed to fix names: unable to parse showed ID!");
 
         string correctName = await GetUserNameAsync(authorId) ?? authorId.ToString();
         string replacedName = authorId == showedId ?
@@ -415,10 +391,8 @@ public partial class GuessModule(ApplicationDbContext db) : InteractionModuleBas
             }
         }
 
-        if (stats.Length == 0) {
-            await RespondAsync("❌ No stats to show... :<", ephemeral: true);
-            return;
-        }
+        if (stats.Length == 0)
+            throw new MessageErrorException("No stats to show... :<");
 
         await FollowupAsync(
             allowedMentions: AllowedMentions.None,

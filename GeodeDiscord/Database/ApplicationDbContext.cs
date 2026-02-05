@@ -6,7 +6,6 @@ namespace GeodeDiscord.Database;
 
 public class ApplicationDbContext : DbContext {
     public DbSet<Quote> quotes { get; set; } = null!;
-    public DbSet<Attachment> attachments { get; set; } = null!;
     public DbSet<Guess> guesses { get; set; } = null!;
     public DbSet<StickyRole> stickyRoles { get; set; } = null!;
 
@@ -22,11 +21,22 @@ public class ApplicationDbContext : DbContext {
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.Entity<Quote>()
-            .HasMany(x => x.files)
-            .WithOne(x => x.fileIn);
+            .OwnsMany(x => x.attachments);
         modelBuilder.Entity<Quote>()
-            .HasMany(x => x.embeds)
-            .WithMany(x => x.embedIn);
+            .OwnsMany(x => x.embeds);
+
+        modelBuilder.Entity<Quote>()
+            .OwnsMany(x => x.embeds)
+            .Property(x => x.type)
+            .HasConversion<string>();
+        modelBuilder.Entity<Quote>()
+            .OwnsMany(x => x.embeds)
+            .Property(x => x.color)
+            .HasConversion<uint?>(x => x, x => x);
+
+        modelBuilder.Entity<Quote>()
+            .OwnsMany(x => x.embeds)
+            .OwnsMany(x => x.fields);
 
         modelBuilder.Entity<Guess>()
             .HasOne(x => x.quote)

@@ -3,11 +3,8 @@ using System.Text;
 
 using Discord;
 using Discord.WebSocket;
-using GeodeDiscord.Database;
-using GeodeDiscord.Database.Entities;
 using Serilog;
 using Serilog.Events;
-using Attachment = GeodeDiscord.Database.Entities.Attachment;
 
 namespace GeodeDiscord;
 
@@ -20,71 +17,6 @@ public static class Util {
         ulong refMessageId = message.Reference.MessageId.Value;
         IMessage? refMessage = await message.Channel.GetMessageAsync(refMessageId);
         return refMessage ?? null;
-    }
-
-    private static async Task<IMessage?> GetForwardedAsync(IMessage message) {
-        if (message.Channel is null || message.Reference is null ||
-            message.Reference.ChannelId != message.Channel.Id ||
-            !message.Reference.MessageId.IsSpecified ||
-            message.Reference.ReferenceType.GetValueOrDefault() != MessageReferenceType.Forward)
-            return null;
-        ulong refMessageId = message.Reference.MessageId.Value;
-        IMessage? refMessage = await message.Channel.GetMessageAsync(refMessageId);
-        return refMessage ?? null;
-    }
-
-    public static Task<Quote> MessageToQuote(ApplicationDbContext db, ulong quoterId, int id, IMessage message,
-        Quote? original = null) => MessageToQuote(db, quoterId, id, message, DateTimeOffset.Now, original);
-
-    public static async Task<Quote> MessageToQuote(ApplicationDbContext db, ulong quoterId, int id, IMessage message,
-        DateTimeOffset timestamp, Quote? original = null) {
-        while (true) {
-            // if we're just quoting a forwarded message, quote the forwarded message instead
-            IMessage? forwarded = await GetForwardedAsync(message);
-            if (forwarded is not null) {
-                message = forwarded;
-                continue;
-            }
-
-            Dictionary<string, Attachment> attachments = [];
-
-            IMessage? reply = await GetReplyAsync(message);
-            return new Quote {
-                id = id,
-                name = original?.name ?? "",
-                messageId = message.Id,
-                channelId = message.Channel?.Id ?? 0,
-                createdAt = original?.createdAt ?? timestamp,
-                lastEditedAt = timestamp,
-                quoterId = quoterId,
-                authorId = message.Author.Id,
-                jumpUrl = message.Channel is null ? null : message.GetJumpUrl(),
-                files = [..message.Attachments.Select(x => {
-                    Attachment attachment = attachments.GetValueOrDefault(x.Url) ??
-                        db.attachments.FirstOrDefault(y => y.url == x.Url) ??
-                        new Attachment {
-                            url = x.Url,
-                            contentType = x.ContentType
-                        };
-                    attachments.TryAdd(attachment.url, attachment);
-                    return attachment;
-                })],
-                embeds = [..message.Embeds.Select(x => {
-                    Attachment attachment = attachments.GetValueOrDefault(x.Url) ??
-                        db.attachments.FirstOrDefault(y => y.url == x.Url) ??
-                        new Attachment {
-                            url = x.Url,
-                            contentType = null
-                        };
-                    attachments.TryAdd(attachment.url, attachment);
-                    return attachment;
-                })],
-                content = message.Content,
-                replyAuthorId = reply?.Author.Id ?? 0,
-                replyMessageId = reply?.Id ?? 0,
-                replyContent = reply?.Content ?? ""
-            };
-        }
     }
 
     public static LogEventLevel DiscordToSerilogLevel(LogSeverity x) => x switch {
@@ -145,5 +77,23 @@ public static class Util {
         str.Append($"{span.TotalSeconds - Math.Truncate(span.TotalSeconds):F1}");
         str.Append('s');
         return str.ToString();
+    }
+
+    public static async Task<SocketInteraction> WaitForInteractionAsync(BaseSocketClient client,
+        Predicate<SocketInteraction> predicate) {
+        TaskCompletionSource<SocketInteraction> tcs = new();
+
+        client.InteractionCreated += HandleInteraction;
+        SocketInteraction result = await tcs.Task.ConfigureAwait(false);
+        client.InteractionCreated -= HandleInteraction;
+
+        return result;
+
+        Task HandleInteraction(SocketInteraction interaction) {
+            if (predicate(interaction)) {
+                tcs.SetResult(interaction);
+            }
+            return Task.CompletedTask;
+        }
     }
 }

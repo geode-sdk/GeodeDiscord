@@ -13,23 +13,16 @@ using Serilog;
 namespace GeodeDiscord.Modules;
 
 [Group("quote-import", "Import quotes."), DefaultMemberPermissions(GuildPermission.Administrator), CommandContextType(InteractionContextType.Guild)]
-public class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
+public class QuoteImportModule(ApplicationDbContext db, QuoteEditor editor) :
+    InteractionModuleBase<SocketInteractionContext> {
     [SlashCommand("manual-id", "Sets the id of a quote."), CommandContextType(InteractionContextType.Guild),
      UsedImplicitly]
     public async Task ManualId([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] int id, int newId) {
         Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
-        if (quote is null) {
-            await RespondAsync("❌ Quote not found!", ephemeral: true);
-            return;
-        }
-        db.Remove(quote);
-        db.Add(quote with { id = newId });
-        try { await db.SaveChangesAsync(); }
-        catch (Exception ex) {
-            Log.Error(ex, "Failed to change quote");
-            await RespondAsync("❌ Failed to change quote!", ephemeral: true);
-            return;
-        }
+        if (quote is null)
+            throw new MessageErrorException("Quote not found!");
+        editor.Update(quote, quote with { id = newId });
+        await db.SaveChangesAsync();
         await RespondAsync($"Quote **{id}** ID changed to `{newId}`!");
     }
 
@@ -38,18 +31,10 @@ public class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<
     public async Task ManualQuoter([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] int id,
         IUser newQuoter) {
         Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
-        if (quote is null) {
-            await RespondAsync("❌ Quote not found!", ephemeral: true);
-            return;
-        }
-        db.Remove(quote);
-        db.Add(quote with { quoterId = newQuoter.Id });
-        try { await db.SaveChangesAsync(); }
-        catch (Exception ex) {
-            Log.Error(ex, "Failed to change quote");
-            await RespondAsync("❌ Failed to change quote!", ephemeral: true);
-            return;
-        }
+        if (quote is null)
+            throw new MessageErrorException("Quote not found!");
+        editor.Update(quote, quote with { quoterId = newQuoter.Id });
+        await db.SaveChangesAsync();
         await RespondAsync($"Quote **{quote.GetFullName()}** quoter changed to `{newQuoter.Id}`!");
     }
 
@@ -58,18 +43,10 @@ public class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<
     public async Task ManualAuthor([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] int id,
         IUser newAuthor) {
         Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
-        if (quote is null) {
-            await RespondAsync("❌ Quote not found!", ephemeral: true);
-            return;
-        }
-        db.Remove(quote);
-        db.Add(quote with { authorId = newAuthor.Id });
-        try { await db.SaveChangesAsync(); }
-        catch (Exception ex) {
-            Log.Error(ex, "Failed to change quote");
-            await RespondAsync("❌ Failed to change quote!", ephemeral: true);
-            return;
-        }
+        if (quote is null)
+            throw new MessageErrorException("Quote not found!");
+        editor.Update(quote, quote with { authorId = newAuthor.Id });
+        await db.SaveChangesAsync();
         await RespondAsync($"Quote **{quote.GetFullName()}** author changed to `{newAuthor.Id}`!");
     }
 
@@ -77,18 +54,10 @@ public class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<
      UsedImplicitly]
     public async Task ClearLastEdited([Autocomplete(typeof(QuoteModule.QuoteAutocompleteHandler))] int id) {
         Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
-        if (quote is null) {
-            await RespondAsync("❌ Quote not found!", ephemeral: true);
-            return;
-        }
-        db.Remove(quote);
-        db.Add(quote with { lastEditedAt = quote.createdAt });
-        try { await db.SaveChangesAsync(); }
-        catch (Exception ex) {
-            Log.Error(ex, "Failed to change quote");
-            await RespondAsync("❌ Failed to change quote!", ephemeral: true);
-            return;
-        }
+        if (quote is null)
+            throw new MessageErrorException("Quote not found!");
+        editor.Update(quote, quote with { lastEditedAt = quote.createdAt });
+        await db.SaveChangesAsync();
         await RespondAsync($"Quote **{quote.GetFullName()}** last edited cleared!");
     }
 
@@ -133,15 +102,6 @@ public class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<
         public async Task ReportFail(string reason, Exception? exception = null) {
             string clarified = string.Join(' ', [name, .._clarifiers]);
             await ReportWarning($"Failed to import {clarified}", reason, exception);
-        }
-
-        public async Task Fail(string reason, Exception? exception) {
-            string clarified = string.Join(' ', [name, .._clarifiers]);
-            if (exception is null)
-                Log.Error("[quote-import] Failed to import {Name}: {Reason}", clarified, reason);
-            else
-                Log.Error(exception, "[quote-import] Failed to import {Name}", clarified);
-            await context.Interaction.FollowupAsync($"❌ Failed to import ${clarified}! ({reason})");
         }
 
         public async Task Success(string message) {
@@ -190,11 +150,12 @@ public class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<
                     continue;
                 }
 
-                db.Remove(quote);
-                db.Add(quote with {
-                    replyMessageId = reply.Id,
-                    replyContent = reply.Content
-                });
+                editor.Update(
+                    quote, quote with {
+                        replyMessageId = reply.Id,
+                        replyContent = reply.Content
+                    }
+                );
                 imported++;
             }
             catch (Exception ex) {
@@ -202,11 +163,7 @@ public class QuoteImportModule(ApplicationDbContext db) : InteractionModuleBase<
             }
         }
 
-        try { await db.SaveChangesAsync(); }
-        catch (Exception ex) {
-            await process.Fail("error when writing to the database", ex);
-            return;
-        }
+        await db.SaveChangesAsync();
 
         await process.Success($"Imported {imported}/{quotes.Count} reply contents");
     }
