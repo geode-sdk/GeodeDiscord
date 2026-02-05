@@ -107,7 +107,7 @@ public class QuoteRenderer(DiscordSocketClient client) {
 
         List<Quote.Attachment> attachments = data.attachments
             .Where(x => x.contentType is null ||
-                x.contentType.StartsWith("image/") && x.contentType.StartsWith("video/"))
+                !x.contentType.StartsWith("image/") && !x.contentType.StartsWith("video/"))
             .ToList();
         StringBuilder attachmentsText = new();
         foreach (Quote.Attachment attachment in attachments) {
@@ -115,7 +115,7 @@ public class QuoteRenderer(DiscordSocketClient client) {
                 attachmentsText.Append("||");
             attachmentsText.Append($"`{attachment.name}`:");
             attachmentsText.Append($" `{FormatSize(attachment.size)}`");
-            attachmentsText.Append($" [`download`]({attachment.url})");
+            attachmentsText.Append($" [download]({attachment.url})");
             if (attachment.description is not null)
                 attachmentsText.Append($" (`{attachment.description}`)");
             if (attachment.isSpoiler)
@@ -155,28 +155,43 @@ public class QuoteRenderer(DiscordSocketClient client) {
     }
 
     private async IAsyncEnumerable<IMessageComponentBuilder?> RenderEmbed(Quote.Embed embed) {
+        StringBuilder text = new();
         switch (embed.type) {
             case EmbedType.Image:
                 yield return new MediaGalleryBuilder([
                     new MediaGalleryItemProperties(new UnfurledMediaItemProperties(embed.url))
                 ]);
-                yield break;
+                break;
             case EmbedType.Video or EmbedType.Gifv:
                 yield return new MediaGalleryBuilder([
                     new MediaGalleryItemProperties(new UnfurledMediaItemProperties(embed.videoUrl))
                 ]);
-                yield break;
+                break;
+            case EmbedType.Article:
+                RenderEmbedProvider(embed, text);
+                await RenderEmbedAuthor(embed, text);
+                RenderEmbedTitle(embed, text);
+                RenderEmbedDescription(embed, text);
+                yield return new TextDisplayBuilder(text.ToString());
+                // TODO: fields
+                if (embed.thumbnailUrl is not null) {
+                    yield return new MediaGalleryBuilder([
+                        new MediaGalleryItemProperties(new UnfurledMediaItemProperties(embed.thumbnailUrl))
+                    ]);
+                }
+                yield return await RenderEmbedFooter(embed);
+                break;
+            default:
+                RenderEmbedProvider(embed, text);
+                await RenderEmbedAuthor(embed, text);
+                RenderEmbedTitle(embed, text);
+                RenderEmbedDescription(embed, text);
+                yield return RenderEmbedThumbnail(embed, text.Length > 0 ? new TextDisplayBuilder(text.ToString()) : null);
+                // TODO: fields
+                yield return RenderEmbedMedia(embed);
+                yield return await RenderEmbedFooter(embed);
+                break;
         }
-
-        StringBuilder text = new();
-        RenderEmbedProvider(embed, text);
-        await RenderEmbedAuthor(embed, text);
-        RenderEmbedTitle(embed, text);
-        RenderEmbedDescription(embed, text);
-        yield return RenderEmbedThumbnail(embed, text.Length > 0 ? new TextDisplayBuilder(text.ToString()) : null);
-        // TODO: fields
-        yield return RenderEmbedMedia(embed);
-        yield return await RenderEmbedFooter(embed);
     }
 
     private static void RenderEmbedProvider(Quote.Embed embed, StringBuilder text) {
@@ -220,9 +235,8 @@ public class QuoteRenderer(DiscordSocketClient client) {
     }
 
     private static IMessageComponentBuilder? RenderEmbedThumbnail(Quote.Embed embed, TextDisplayBuilder? text) {
-        if (embed.thumbnailUrl is null) {
+        if (embed.thumbnailUrl is null)
             return text;
-        }
         text ??= new TextDisplayBuilder(" ");
         return new SectionBuilder(
             new ThumbnailBuilder(new UnfurledMediaItemProperties(embed.thumbnailUrl)),
