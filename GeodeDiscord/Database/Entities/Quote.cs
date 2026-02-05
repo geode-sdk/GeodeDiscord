@@ -34,7 +34,10 @@ public record Quote {
     public required ulong replyMessageId { get; init; }
     public required string replyContent { get; init; }
 
-    public string GetFullName() => string.IsNullOrWhiteSpace(name) ? id.ToString() : $"{id}: {name}";
+    public string GetFullName() {
+        string idStr = id == 0 ? "tbd" : id.ToString();
+        return string.IsNullOrWhiteSpace(name) ? idStr : $"{idStr}: {name}";
+    }
 
     [Owned]
     public record Attachment {

@@ -78,22 +78,4 @@ public static class Util {
         str.Append('s');
         return str.ToString();
     }
-
-    public static async Task<SocketInteraction> WaitForInteractionAsync(BaseSocketClient client,
-        Predicate<SocketInteraction> predicate) {
-        TaskCompletionSource<SocketInteraction> tcs = new();
-
-        client.InteractionCreated += HandleInteraction;
-        SocketInteraction result = await tcs.Task.ConfigureAwait(false);
-        client.InteractionCreated -= HandleInteraction;
-
-        return result;
-
-        Task HandleInteraction(SocketInteraction interaction) {
-            if (predicate(interaction)) {
-                tcs.SetResult(interaction);
-            }
-            return Task.CompletedTask;
-        }
-    }
 }

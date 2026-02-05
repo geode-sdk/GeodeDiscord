@@ -28,11 +28,16 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
             );
         }
 
-        int max = !await db.quotes.AnyAsync() ? 0 : await db.quotes.Select(x => x.id).MaxAsync();
-        Quote quote = await MessageToQuote(context.User.Id, max, message, context.Interaction.CreatedAt);
-        db.Add(quote with { id = max + 1 });
+        return await MessageToQuote(context.User.Id, 0, message, context.Interaction.CreatedAt);
+    }
 
-        OnSave(quote, true, () => Log.Information(
+    public async Task<Quote> Add(Quote quote) {
+        // ensure id is still unique
+        int max = !await db.quotes.AnyAsync() ? 0 : await db.quotes.Select(x => x.id).MaxAsync();
+        quote = quote with { id = max + 1 };
+        db.Add(quote);
+
+        LogOnSave(() => Log.Information(
             "{User} created quote {Id} from {MessageId}",
             context.User.Id, quote.GetFullName(), quote.messageId
         ));
@@ -44,7 +49,7 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
         string oldName = quote.GetFullName();
         quote.name = newName.Trim();
 
-        OnSave(quote, true, () => Log.Information(
+        LogOnSave(() => Log.Information(
             "{User} renamed quote {OldName} to {NewName}",
             context.User.Id, oldName, quote.GetFullName()
         ));
@@ -53,7 +58,7 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
     public void Delete(Quote quote) {
         db.Remove(quote);
 
-        OnSave(quote, false, () => Log.Information(
+        LogOnSave(() => Log.Information(
             "{User} deleted quote {Name}",
             context.User.Id, quote.GetFullName()
         ));
@@ -82,53 +87,32 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
         db.Remove(oldQuote);
         db.Update(newQuote);
 
-        OnSave(newQuote, true, () => Log.Information(
+        LogOnSave(() => Log.Information(
             "{User} updated quote {OldName} to {NewName}",
             context.User.Id, oldQuote.GetFullName(), newQuote.GetFullName()
         ));
     }
 
-    private static event Action<Quote, bool>? onUpdate;
-    public async Task<Quote?> WaitForUpdateAsync(Quote quote) {
-        TaskCompletionSource<Quote?> tcs = new();
-
-        onUpdate += HandleUpdate;
-        Quote? result = await tcs.Task.ConfigureAwait(false);
-        onUpdate -= HandleUpdate;
-
-        return result;
-
-        void HandleUpdate(Quote newQuote, bool exists) {
-            if (newQuote.messageId != quote.messageId)
-                return;
-            tcs.SetResult(exists ? newQuote : null);
-        }
-    }
-
-    private readonly Dictionary<ulong, (Quote quote, bool exists)> _pendingChanges = [];
-    private void OnSave(Quote quote, bool exists, Action? log) {
-        if (_pendingChanges.TryGetValue(quote.messageId, out (Quote quote, bool exists) change)) {
-            exists = exists && change.exists;
-        }
-        else {
-            db.SavedChanges += SuccessHandler;
-            db.SaveChangesFailed += FailHandler;
-        }
-        _pendingChanges[quote.messageId] = (quote, exists);
+    private int _onSaveLogCount;
+    private void LogOnSave(Action log) {
+        // prevent log spam in quote-import
+        if (_onSaveLogCount >= 10)
+            return;
+        db.SavedChanges += SuccessHandler;
+        db.SaveChangesFailed += FailHandler;
+        _onSaveLogCount++;
         return;
 
         void SuccessHandler(object? sender, SavedChangesEventArgs args) {
-            // TODO: figure out logs
-            //log?.Invoke();
-            (Quote quote, bool exists) pending = _pendingChanges[quote.messageId];
-            onUpdate?.Invoke(pending.quote, pending.exists);
-            _pendingChanges.Remove(quote.messageId);
+            log.Invoke();
             db.SavedChanges -= SuccessHandler;
             db.SaveChangesFailed -= FailHandler;
+            _onSaveLogCount--;
         }
         void FailHandler(object? sender, SaveChangesFailedEventArgs args) {
             db.SavedChanges -= SuccessHandler;
             db.SaveChangesFailed -= FailHandler;
+            _onSaveLogCount--;
         }
     }
 
