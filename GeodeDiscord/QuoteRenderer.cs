@@ -75,10 +75,14 @@ public class QuoteRenderer(DiscordSocketClient client) {
     }
 
     private async IAsyncEnumerable<IMessageComponentBuilder> RenderQuote(QuoteComponentData data) {
-        ContainerBuilder container = new ContainerBuilder()
+        yield return new ContainerBuilder()
             .WithAccentColor(new Color(0xf19060))
-            .WithTextDisplay($"**{data.fullName}**");
+            .WithTextDisplay($"**{data.fullName}**")
+            .AddComponents(await RenderQuoteContents(data).ToArrayAsync());
+        yield return RenderQuoteFooter(data);
+    }
 
+    private async IAsyncEnumerable<IMessageComponentBuilder> RenderQuoteContents(QuoteComponentData data) {
         StringBuilder description = new();
         if (data.reply is not null) {
             string[] replyContent = data.reply.Value.content.Split(["\n", "\r\n"], StringSplitOptions.None);
@@ -86,12 +90,26 @@ public class QuoteRenderer(DiscordSocketClient client) {
             for (int i = 1; i < replyContent.Length; i++)
                 description.AppendLine($"> -# {replyContent[i]}");
         }
-        if (data.content is not null) {
+        if (data.content is not null)
             description.AppendLine(data.content);
-        }
         if (description.Length > 0)
-            container.WithTextDisplay(description.ToString());
+            yield return new TextDisplayBuilder(description.ToString());
 
+        List<MediaGalleryItemProperties> gallery = RenderQuoteGallery(data);
+        if (gallery.Count > 0)
+            yield return new MediaGalleryBuilder(gallery);
+
+        string attachmentsText = RenderQuoteAttachments(data);
+        if (attachmentsText.Length > 0)
+            yield return new TextDisplayBuilder(attachmentsText);
+
+        await foreach (IMessageComponentBuilder component in RenderQuoteEmbeds(data))
+            yield return component;
+
+        yield return new TextDisplayBuilder($"\\- {data.author} in `#{data.channel}`");
+    }
+
+    private static List<MediaGalleryItemProperties> RenderQuoteGallery(QuoteComponentData data) {
         List<MediaGalleryItemProperties> gallery = data.attachments
             .Where(x => x.contentType is not null &&
                 (x.contentType.StartsWith("image/") || x.contentType.StartsWith("video/")))
@@ -101,10 +119,10 @@ public class QuoteRenderer(DiscordSocketClient client) {
                 IsSpoiler = x.isSpoiler
             })
             .ToList();
-        if (gallery.Count > 0) {
-            container.WithMediaGallery(gallery);
-        }
+        return gallery;
+    }
 
+    private static string RenderQuoteAttachments(QuoteComponentData data) {
         List<Quote.Attachment> attachments = data.attachments
             .Where(x => x.contentType is null ||
                 !x.contentType.StartsWith("image/") && !x.contentType.StartsWith("video/"))
@@ -122,10 +140,10 @@ public class QuoteRenderer(DiscordSocketClient client) {
                 attachmentsText.Append("||");
             attachmentsText.AppendLine();
         }
-        if (attachmentsText.Length > 0) {
-            container.WithTextDisplay(attachmentsText.ToString());
-        }
+        return attachmentsText.ToString();
+    }
 
+    private async IAsyncEnumerable<IMessageComponentBuilder> RenderQuoteEmbeds(QuoteComponentData data) {
         Dictionary<string, ICollection<string>> galleries = [];
         List<EmbedComponentData> embeds = data.embeds
             .Select(x => EmbedComponentData.From(x, galleries))
@@ -133,30 +151,14 @@ public class QuoteRenderer(DiscordSocketClient client) {
             .Select(x => x!.Value)
             .ToList();
         foreach (EmbedComponentData embed in embeds) {
-            container.WithSeparator();
+            yield return new SeparatorBuilder();
             await foreach (IMessageComponentBuilder? component in RenderEmbed(embed)) {
                 if (component is not null)
-                    container.AddComponent(component);
+                    yield return component;
             }
         }
-        if (embeds.Count > 0) {
-            container.WithSeparator();
-        }
-
-        container.WithTextDisplay($"\\- {data.author} in `#{data.channel}`");
-
-        yield return container;
-
-        StringBuilder footer = new();
-        footer.Append("-# ");
-        footer.Append(data.quoter);
-        footer.Append("  •  ");
-        footer.Append(data.createdAt);
-        if (data.jumpUrl is not null) {
-            footer.Append("  •  ");
-            footer.Append($"[jump]({data.jumpUrl})");
-        }
-        yield return new TextDisplayBuilder(footer.ToString());
+        if (embeds.Count > 0)
+            yield return new SeparatorBuilder();
     }
 
     private readonly record struct EmbedComponentData(
@@ -309,6 +311,19 @@ public class QuoteRenderer(DiscordSocketClient client) {
         }
 
         return footer.Length > 0 ? new TextDisplayBuilder(footer.ToString()) : null;
+    }
+
+    private static TextDisplayBuilder RenderQuoteFooter(QuoteComponentData data) {
+        StringBuilder footer = new();
+        footer.Append("-# ");
+        footer.Append(data.quoter);
+        footer.Append("  •  ");
+        footer.Append(data.createdAt);
+        if (data.jumpUrl is not null) {
+            footer.Append("  •  ");
+            footer.Append($"[jump]({data.jumpUrl})");
+        }
+        return new TextDisplayBuilder(footer.ToString());
     }
 
     private async Task<Emote?> GetOrCreateIconEmote(string url) {
