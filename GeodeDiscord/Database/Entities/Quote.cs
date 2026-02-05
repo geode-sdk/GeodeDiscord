@@ -56,7 +56,6 @@ public record Quote {
         [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public ulong id { get; private set; }
 
-        // probably useless?
         public required EmbedType type { get; init; }
 
         // useless in this context but ill keep it anyway just in case,

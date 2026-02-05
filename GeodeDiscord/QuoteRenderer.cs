@@ -126,15 +126,20 @@ public class QuoteRenderer(DiscordSocketClient client) {
             container.WithTextDisplay(attachmentsText.ToString());
         }
 
-        // TODO: combine images
-        foreach (Quote.Embed embed in data.embeds) {
+        Dictionary<string, ICollection<string>> galleries = [];
+        List<EmbedComponentData> embeds = data.embeds
+            .Select(x => EmbedComponentData.From(x, galleries))
+            .Where(x => x.HasValue)
+            .Select(x => x!.Value)
+            .ToList();
+        foreach (EmbedComponentData embed in embeds) {
             container.WithSeparator();
             await foreach (IMessageComponentBuilder? component in RenderEmbed(embed)) {
                 if (component is not null)
                     container.AddComponent(component);
             }
         }
-        if (data.embeds.Count > 0) {
+        if (embeds.Count > 0) {
             container.WithSeparator();
         }
 
@@ -154,129 +159,153 @@ public class QuoteRenderer(DiscordSocketClient client) {
         yield return new TextDisplayBuilder(footer.ToString());
     }
 
-    private async IAsyncEnumerable<IMessageComponentBuilder?> RenderEmbed(Quote.Embed embed) {
-        StringBuilder text = new();
-        switch (embed.type) {
-            case EmbedType.Image:
-                yield return new MediaGalleryBuilder([
-                    new MediaGalleryItemProperties(new UnfurledMediaItemProperties(embed.url))
-                ]);
-                break;
-            case EmbedType.Video or EmbedType.Gifv:
-                yield return new MediaGalleryBuilder([
-                    new MediaGalleryItemProperties(new UnfurledMediaItemProperties(embed.videoUrl))
-                ]);
-                break;
-            case EmbedType.Article:
-                RenderEmbedProvider(embed, text);
-                await RenderEmbedAuthor(embed, text);
-                RenderEmbedTitle(embed, text);
-                RenderEmbedDescription(embed, text);
-                yield return new TextDisplayBuilder(text.ToString());
-                // TODO: fields
-                if (embed.thumbnailUrl is not null) {
-                    yield return new MediaGalleryBuilder([
-                        new MediaGalleryItemProperties(new UnfurledMediaItemProperties(embed.thumbnailUrl))
-                    ]);
+    private readonly record struct EmbedComponentData(
+        ICollection<string> gallery,
+        (string name, string? url)? provider = null,
+        string? authorIcon = null,
+        (string name, string? url)? author = null,
+        string? title = null,
+        string? url = null,
+        string? thumbnail = null,
+        string? description = null,
+        string? footerIcon = null,
+        string? footerText = null,
+        DateTimeOffset? timestamp = null
+    ) {
+        public static EmbedComponentData? From(Quote.Embed embed, Dictionary<string, ICollection<string>> galleries) {
+            if (embed.url is not null && galleries.TryGetValue(embed.url, out ICollection<string>? gallery)) {
+                string? media = embed.videoUrl ?? embed.imageUrl;
+                if (media is not null)
+                    gallery.Add(media);
+                return null;
+            }
+            EmbedComponentData data = embed.type switch {
+                EmbedType.Image => new EmbedComponentData { gallery = embed.url is null ? [] : [embed.url] },
+                EmbedType.Video or EmbedType.Gifv => new EmbedComponentData {
+                    gallery = embed.videoUrl is null ? [] : [embed.videoUrl]
+                },
+                EmbedType.Article => new EmbedComponentData {
+                    provider = embed.providerName is null ? null : (embed.providerName, embed.providerUrl),
+                    authorIcon = embed.authorIconUrl,
+                    author = embed.authorName is null ? null : (embed.authorName, embed.authorUrl),
+                    title = embed.title,
+                    url = embed.url,
+                    description = embed.description,
+                    gallery = embed.thumbnailUrl is null ? [] : [embed.thumbnailUrl],
+                    footerIcon = embed.footerIconUrl,
+                    footerText = embed.footerText,
+                    timestamp = embed.timestamp
+                },
+                _ => new EmbedComponentData {
+                    provider = embed.providerName is null ? null : (embed.providerName, embed.providerUrl),
+                    authorIcon = embed.authorIconUrl,
+                    author = embed.authorName is null ? null : (embed.authorName, embed.authorUrl),
+                    title = embed.title,
+                    url = embed.url,
+                    thumbnail = embed.thumbnailUrl,
+                    description = embed.description,
+                    gallery = embed.videoUrl is not null ? [embed.videoUrl] :
+                        embed.imageUrl is not null ? [embed.imageUrl] : [],
+                    footerIcon = embed.footerIconUrl,
+                    footerText = embed.footerText,
+                    timestamp = embed.timestamp
                 }
-                yield return await RenderEmbedFooter(embed);
-                break;
-            default:
-                RenderEmbedProvider(embed, text);
-                await RenderEmbedAuthor(embed, text);
-                RenderEmbedTitle(embed, text);
-                RenderEmbedDescription(embed, text);
-                yield return RenderEmbedThumbnail(embed, text.Length > 0 ? new TextDisplayBuilder(text.ToString()) : null);
-                // TODO: fields
-                yield return RenderEmbedMedia(embed);
-                yield return await RenderEmbedFooter(embed);
-                break;
+            };
+            if (data.url is not null)
+                galleries.Add(data.url, data.gallery);
+            return data;
         }
     }
 
-    private static void RenderEmbedProvider(Quote.Embed embed, StringBuilder text) {
-        if (embed.providerName is null)
-            return;
-        if (embed.providerUrl is null)
-            text.AppendLine($"-# {embed.providerName}");
-        else
-            text.AppendLine($"-# [{embed.providerName}]({embed.providerUrl})");
+    private async IAsyncEnumerable<IMessageComponentBuilder?> RenderEmbed(EmbedComponentData data) {
+        StringBuilder text = new();
+        RenderEmbedProvider(data, text);
+        await RenderEmbedAuthor(data, text);
+        RenderEmbedTitle(data, text);
+        RenderEmbedDescription(data, text);
+        yield return RenderEmbedThumbnail(data, text.Length > 0 ? new TextDisplayBuilder(text.ToString()) : null);
+        // TODO: fields
+        yield return RenderEmbedGallery(data);
+        yield return await RenderEmbedFooter(data);
     }
 
-    private async Task RenderEmbedAuthor(Quote.Embed embed, StringBuilder text) {
-        if (embed.authorIconUrl is not null) {
-            Emote? emote = await GetOrCreateIconEmote(embed.authorIconUrl);
+    private static void RenderEmbedProvider(EmbedComponentData data, StringBuilder text) {
+        if (data.provider is null)
+            return;
+        if (data.provider.Value.url is null)
+            text.AppendLine($"-# {data.provider.Value.name}");
+        else
+            text.AppendLine($"-# [{data.provider.Value.name}]({data.provider.Value.url})");
+    }
+
+    private async Task RenderEmbedAuthor(EmbedComponentData data, StringBuilder text) {
+        if (data.authorIcon is not null) {
+            Emote? emote = await GetOrCreateIconEmote(data.authorIcon);
             if (emote is not null)
                 text.Append($"<:{emote.Name}:{emote.Id}>");
-            if (embed.authorName is not null)
+            if (data.author is not null)
                 text.Append("  ");
         }
-        if (embed.authorName is null)
+        if (data.author is null)
             return;
-        if (embed.authorUrl is null)
-            text.AppendLine($"**{embed.authorName}**");
+        if (data.author.Value.url is null)
+            text.AppendLine($"**{data.author.Value.name}**");
         else
-            text.AppendLine($"[**{embed.authorName}**]({embed.authorUrl})");
+            text.AppendLine($"[**{data.author.Value.name}**]({data.author.Value.url})");
     }
 
-    private static void RenderEmbedTitle(Quote.Embed embed, StringBuilder text) {
-        if (embed.title is null)
+    private static void RenderEmbedTitle(EmbedComponentData data, StringBuilder text) {
+        if (data.title is null)
             return;
-        if (embed.url is null)
-            text.AppendLine($"### {embed.url}");
+        if (data.url is null)
+            text.AppendLine($"### {data.url}");
         else
-            text.AppendLine($"### [{embed.title}]({embed.url})");
+            text.AppendLine($"### [{data.title}]({data.url})");
     }
 
-    private static void RenderEmbedDescription(Quote.Embed embed, StringBuilder text) {
-        if (embed.description is null)
+    private static void RenderEmbedDescription(EmbedComponentData data, StringBuilder text) {
+        if (data.description is null)
             return;
-        text.AppendLine(embed.description);
+        text.AppendLine(data.description);
     }
 
-    private static IMessageComponentBuilder? RenderEmbedThumbnail(Quote.Embed embed, TextDisplayBuilder? text) {
-        if (embed.thumbnailUrl is null)
+    private static IMessageComponentBuilder? RenderEmbedThumbnail(EmbedComponentData data, TextDisplayBuilder? text) {
+        if (data.thumbnail is null)
             return text;
         text ??= new TextDisplayBuilder(" ");
         return new SectionBuilder(
-            new ThumbnailBuilder(new UnfurledMediaItemProperties(embed.thumbnailUrl)),
+            new ThumbnailBuilder(new UnfurledMediaItemProperties(data.thumbnail)),
             [text]
         );
     }
 
-    private static MediaGalleryBuilder? RenderEmbedMedia(Quote.Embed embed) {
-        if (embed.videoUrl is not null) {
-            return new MediaGalleryBuilder([
-                new MediaGalleryItemProperties(new UnfurledMediaItemProperties(embed.videoUrl))
-            ]);
-        }
-        if (embed.imageUrl is not null) {
-            return new MediaGalleryBuilder([
-                new MediaGalleryItemProperties(new UnfurledMediaItemProperties(embed.imageUrl))
-            ]);
-        }
-        return null;
+    private static MediaGalleryBuilder? RenderEmbedGallery(EmbedComponentData data) {
+        if (data.gallery.Count == 0)
+            return null;
+        return new MediaGalleryBuilder(
+            data.gallery.Select(x => new MediaGalleryItemProperties(new UnfurledMediaItemProperties(x)))
+        );
     }
 
-    private async Task<TextDisplayBuilder?> RenderEmbedFooter(Quote.Embed embed) {
+    private async Task<TextDisplayBuilder?> RenderEmbedFooter(EmbedComponentData data) {
         StringBuilder footer = new();
 
-        if (embed.footerIconUrl is not null) {
-            Emote? emote = await GetOrCreateIconEmote(embed.footerIconUrl);
+        if (data.footerIcon is not null) {
+            Emote? emote = await GetOrCreateIconEmote(data.footerIcon);
             if (emote is not null)
                 footer.Append($"<:{emote.Name}:{emote.Id}>");
-            if (embed.footerText is not null || embed.timestamp is not null)
+            if (data.footerText is not null || data.timestamp is not null)
                 footer.Append("  ");
         }
 
-        if (embed.footerText is not null) {
-            footer.Append(embed.footerText);
-            if (embed.timestamp is not null)
+        if (data.footerText is not null) {
+            footer.Append(data.footerText);
+            if (data.timestamp is not null)
                 footer.Append("  •  ");
         }
 
-        if (embed.timestamp is not null) {
-            footer.Append($"<t:{embed.timestamp.Value.ToUnixTimeSeconds()}:s>");
+        if (data.timestamp is not null) {
+            footer.Append($"<t:{data.timestamp.Value.ToUnixTimeSeconds()}:s>");
         }
 
         return footer.Length > 0 ? new TextDisplayBuilder(footer.ToString()) : null;
