@@ -41,8 +41,9 @@ public partial class QuoteModule(ApplicationDbContext db, QuoteEditor editor, Qu
                 quote,
                 await InteractionUtility.WaitForInteractionAsync(
                     Context.Client, addQuoteTimeout, x =>
-                        x is SocketMessageComponent y && y.Message.Id == response.Id ||
-                        x is SocketModal z && z.Message.Id == response.Id
+                        IsAddButtonAllowed(x) &&
+                        (x is SocketMessageComponent y && y.Message.Id == response.Id ||
+                            x is SocketModal z && z.Message.Id == response.Id)
                 )
             );
 
@@ -168,11 +169,19 @@ public partial class QuoteModule(ApplicationDbContext db, QuoteEditor editor, Qu
         return builder.Build();
     }
 
-    // so that discord.net doesnt complain
-#pragma warning disable CA1822
     [ComponentInteraction("add-*"), ModalInteraction("add-*"), UsedImplicitly]
-    private Task QuoteAddButton(string stupid) => Task.CompletedTask;
-#pragma warning restore CA1822
+    private Task AddButton(string name) => IsAddButtonAllowed(Context.Interaction) ? Task.CompletedTask :
+        throw new MessageErrorException("Only an admin or the user that added the quote can edit or cancel it!");
+
+    private static bool IsAddButtonAllowed(SocketInteraction interaction) =>
+        interaction.User is IGuildUser guildUser && guildUser.GuildPermissions.Has(GuildPermission.Administrator) ||
+        interaction switch {
+            SocketMessageComponent component =>
+                component.Data.CustomId == "quote/add-get-button" ||
+                component.User.Id == component.Message.InteractionMetadata.User.Id,
+            SocketModal modal => modal.User.Id == modal.Message.InteractionMetadata.User.Id,
+            _ => false
+        };
 
     [SlashCommand("count", "Gets the total amount of quotes."), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task GetCount(IUser? user = null) {
