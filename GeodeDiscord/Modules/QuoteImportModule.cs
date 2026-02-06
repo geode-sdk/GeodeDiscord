@@ -182,5 +182,49 @@ public class QuoteImportModule(ApplicationDbContext db, QuoteEditor editor) :
                 .CountAsync(x => x.guessedAt - x.startedAt > TimeSpan.FromSeconds(60.0));
             await RespondAsync($"{count}/{await db.guesses.CountAsync()} guesses have invalid timestamps bc i fucked up sorgy");
         }
+
+        [SlashCommand("fix-invalid-timestamps", "Fix invalid timestamps."),
+         CommandContextType(InteractionContextType.Guild),
+         UsedImplicitly]
+        public async Task FixInvalidTimestamps() {
+            ImportProcess process = await StartImport("invalid timestamps");
+
+            await process.ReportProgress("querying guesses");
+            List<Guess> guesses = await db.guesses.ToListAsync();
+
+            int total = 0;
+            int imported = 0;
+            for (int i = 0; i < guesses.Count; i++) {
+                Guess guess = guesses[i];
+                if (guess.guessedAt - guess.startedAt <= TimeSpan.FromSeconds(60.0))
+                    continue;
+                total++;
+                using ImportProcess.Clarifier guessClarifier = process.Clarify($"for guess {guess.messageId}");
+                try {
+                    Guess nextGuess = guesses[i + 1];
+                    if (imported % 10 == 0) {
+                        await process.ReportProgress($"{imported}/{guesses.Count} guesses");
+                    }
+
+                    TimeSpan diff = nextGuess.startedAt - guess.startedAt;
+                    if (diff.TotalSeconds > 60.0)
+                        diff = TimeSpan.FromSeconds(60.0);
+
+                    db.Remove(guess);
+                    db.Update(guess with {
+                        guessedAt = guess.startedAt + diff / 2
+                    });
+
+                    imported++;
+                }
+                catch (Exception ex) {
+                    await process.ReportFail("unknown error", ex);
+                }
+            }
+
+            await db.SaveChangesAsync();
+
+            await process.Success($"Fixed {imported}/{total} invalid guess timestamps");
+        }
     }
 }
