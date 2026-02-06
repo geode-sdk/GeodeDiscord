@@ -29,26 +29,6 @@ public static class Util {
         _ => LogEventLevel.Information
     };
 
-    public static async Task<IUser?> GetUserAsyncSafe(DiscordSocketClient client, ulong id) {
-        try {
-            return await GetUserAsync(client, id);
-        }
-        catch (Exception ex) {
-            Log.Error(ex, "Failed to get user {Id}", id);
-            return null;
-        }
-    }
-
-    public static async Task<IChannel?> GetChannelAsyncSafe(DiscordSocketClient client, ulong id) {
-        try {
-            return await GetChannelAsync(client, id);
-        }
-        catch (Exception ex) {
-            Log.Error(ex, "Failed to get channel {Id}", id);
-            return null;
-        }
-    }
-
     private static readonly ConcurrentDictionary<ulong, IUser?> extraUserCache = [];
     public static async Task<IUser?> GetUserAsync(DiscordSocketClient client, ulong id) {
         if (id == 0)
@@ -56,7 +36,11 @@ public static class Util {
         IUser? user = client.GetUser(id);
         if (user is not null || extraUserCache.TryGetValue(id, out user))
             return user;
-        user = await client.GetUserAsync(id);
+        try { user = await client.GetUserAsync(id); }
+        catch (Exception ex) {
+            Log.Error(ex, "Failed to get user {Id}", id);
+            return null;
+        }
         extraUserCache[id] = user;
         Log.Information("Added user {User} ({Username}, {Id}) to extra cache", user?.GlobalName, user?.Username, id);
         return user;
@@ -69,7 +53,11 @@ public static class Util {
         IChannel? channel = client.GetChannel(id);
         if (channel is not null || extraChannelCache.TryGetValue(id, out channel))
             return channel;
-        channel = await client.GetChannelAsync(id);
+        try { channel = await client.GetChannelAsync(id); }
+        catch (Exception ex) {
+            Log.Error(ex, "Failed to get channel {Id}", id);
+            return null;
+        }
         extraChannelCache[id] = channel;
         Log.Information("Added channel {Channel} ({Id}) to extra cache", channel?.Name, id);
         return channel;

@@ -41,7 +41,7 @@ public class QuoteRenderer(DiscordSocketClient client) {
         public readonly record struct Reply(string author, string content);
 
         public static async Task<QuoteComponentData> Default(DiscordSocketClient client, Quote quote) {
-            IChannel? channel = await Util.GetChannelAsyncSafe(client, quote.channelId);
+            IChannel? channel = await Util.GetChannelAsync(client, quote.channelId);
 
             bool hasReply = quote.replyAuthorId != 0 && quote.replyMessageId != 0 &&
                 !string.IsNullOrEmpty(quote.replyContent);
