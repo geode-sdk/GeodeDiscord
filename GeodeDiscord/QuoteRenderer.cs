@@ -307,7 +307,7 @@ public class QuoteRenderer(DiscordSocketClient client) {
     private static IMessageComponentBuilder? RenderEmbedThumbnail(EmbedComponentData data, TextDisplayBuilder? text) {
         if (data.thumbnail is null)
             return text;
-        text ??= new TextDisplayBuilder(" ");
+        text ??= new TextDisplayBuilder("_ _");
         return new SectionBuilder(
             new ThumbnailBuilder(new UnfurledMediaItemProperties(data.thumbnail)),
             [text]
