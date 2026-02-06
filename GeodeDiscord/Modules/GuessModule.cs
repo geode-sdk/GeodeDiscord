@@ -30,6 +30,7 @@ public partial class GuessModule(ApplicationDbContext db, QuoteRenderer renderer
         await DeferAsync();
 
         IQueryable<Quote> quotes = db.quotes
+            .Where(x => x.components.Length == 0) // no components
             .OrderBy(_ => EF.Functions.Random())
             .Take(10); // surely 10 is gonna be enough to find one
 

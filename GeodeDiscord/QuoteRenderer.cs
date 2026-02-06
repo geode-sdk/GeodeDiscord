@@ -1,9 +1,13 @@
 ﻿using System.IO.Hashing;
 using System.Text;
 using Discord;
+using Discord.Net.Converters;
+using Discord.Rest;
 using Discord.WebSocket;
 using GeodeDiscord.Database.Entities;
 using NetVips;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Bson;
 using Image = Discord.Image;
 using Log = Serilog.Log;
 
@@ -27,6 +31,7 @@ public class QuoteRenderer(DiscordSocketClient client) {
         string? content,
         ICollection<Quote.Attachment> attachments,
         ICollection<Quote.Embed> embeds,
+        byte[] components,
         string author,
         string channel,
         string quoter,
@@ -47,6 +52,7 @@ public class QuoteRenderer(DiscordSocketClient client) {
                 content = string.IsNullOrWhiteSpace(quote.content) ? null : quote.content,
                 attachments = quote.attachments,
                 embeds = quote.embeds,
+                components = quote.components,
                 author = $"<@{quote.authorId}>",
                 channel = channel?.Name ?? "<unknown>",
                 quoter = quote.quoterId == 0 ? "<unknown>" : $"<@{quote.quoterId}>",
@@ -65,6 +71,7 @@ public class QuoteRenderer(DiscordSocketClient client) {
                 content = !string.IsNullOrWhiteSpace(quote.content) ? quote.content : null,
                 attachments = quote.attachments,
                 embeds = quote.embeds,
+                components = quote.components,
                 author = "?????",
                 channel = "?????",
                 quoter = "?????",
@@ -104,6 +111,9 @@ public class QuoteRenderer(DiscordSocketClient client) {
             yield return new TextDisplayBuilder(attachmentsText);
 
         await foreach (IMessageComponentBuilder component in RenderQuoteEmbeds(data))
+            yield return component;
+
+        await foreach (IMessageComponentBuilder component in RenderQuoteComponents(data))
             yield return component;
 
         yield return new TextDisplayBuilder($"\\- {data.author} in `#{data.channel}`");
@@ -311,6 +321,77 @@ public class QuoteRenderer(DiscordSocketClient client) {
         }
 
         return footer.Length > 0 ? new TextDisplayBuilder(footer.ToString()) : null;
+    }
+
+    private static async IAsyncEnumerable<IMessageComponentBuilder> RenderQuoteComponents(QuoteComponentData data) {
+        if (data.components.Length == 0)
+            yield break;
+        IEnumerable<IMessageComponent>? original;
+        try {
+            using MemoryStream stream = new(data.components);
+            await using BsonDataReader bson = new(stream);
+            original = JsonSerializer.Create(new JsonSerializerSettings {
+                ContractResolver = new DiscordContractResolver()
+            }).Deserialize<Quote.FakeMessage>(bson)?.components.Select(x => x.ToEntity());
+        }
+        catch (Exception ex) {
+            Log.Error(ex, "Failed to render components");
+            original = null;
+        }
+        if (original is null) {
+            yield return new TextDisplayBuilder("-# `❌ Failed to render components!`");
+            yield break;
+        }
+        foreach (IMessageComponentBuilder component in RenderQuoteComponents(original))
+            yield return component;
+    }
+
+    private static IEnumerable<IMessageComponentBuilder> RenderQuoteComponents(IEnumerable<IMessageComponent> orig) {
+        bool lastWasContainer = false;
+        foreach (IMessageComponent component in orig) {
+            IMessageComponentBuilder builder = component.ToBuilder();
+            if (builder is not ContainerBuilder container) {
+                yield return FilterQuoteComponent(builder);
+                lastWasContainer = false;
+                continue;
+            }
+            if (!lastWasContainer)
+                yield return new SeparatorBuilder();
+            foreach (IMessageComponentBuilder child in container.Components)
+                yield return FilterQuoteComponent(child);
+            yield return new SeparatorBuilder();
+            lastWasContainer = true;
+        }
+    }
+
+    private static IMessageComponentBuilder FilterQuoteComponent(IMessageComponentBuilder component) {
+        switch (component) {
+            case IComponentContainer container:
+                foreach (IMessageComponentBuilder child in container.Components)
+                    FilterQuoteComponent(child);
+                break;
+            // prevent buttons with custom id from triggering non-existent interactions
+            case ButtonBuilder button:
+                if (!string.IsNullOrEmpty(button.CustomId))
+                    button.IsDisabled = true;
+                break;
+            case SelectMenuBuilder selectMenu:
+                if (!string.IsNullOrEmpty(selectMenu.CustomId))
+                    selectMenu.IsDisabled = true;
+                break;
+        }
+        if (component is not IInteractableComponentBuilder interactable || string.IsNullOrEmpty(interactable.CustomId))
+            return component;
+        try {
+            Span<byte> bytes = stackalloc byte[50];
+            Random.Shared.NextBytes(bytes);
+            interactable.CustomId = Convert.ToHexString(bytes);
+            return component;
+        }
+        catch (Exception ex) {
+            Log.Error(ex, "Failed to render component");
+            return new TextDisplayBuilder("-# `❌ Failed to render component!`");
+        }
     }
 
     private static TextDisplayBuilder RenderQuoteFooter(QuoteComponentData data) {

@@ -2,6 +2,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using Discord;
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
 
 namespace GeodeDiscord.Database.Entities;
 
@@ -22,12 +23,11 @@ public record Quote {
     public required ulong authorId { get; init; }
     public string? jumpUrl { get; init; }
 
-    // attachments
-    public virtual required ICollection<Attachment> attachments { get; init; }
-    public virtual required ICollection<Embed> embeds { get; init; }
-
     // content
     public required string content { get; init; }
+    public required byte[] components { get; init; }
+    public virtual required ICollection<Attachment> attachments { get; init; }
+    public virtual required ICollection<Embed> embeds { get; init; }
 
     // reply
     public required ulong replyAuthorId { get; init; }
@@ -97,5 +97,11 @@ public record Quote {
             public required string value { get; init; }
             public required bool inline { get; init; }
         }
+    }
+
+    // just for json encode/decode since i apparently cant do it directly on an array
+    public record FakeMessage {
+        [JsonProperty(nameof(components))]
+        public required IMessageComponent[] components { get; set; }
     }
 }

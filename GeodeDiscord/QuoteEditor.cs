@@ -1,8 +1,12 @@
 ﻿using Discord;
 using Discord.Interactions;
+using Discord.Net.Converters;
+using Discord.Rest;
 using GeodeDiscord.Database;
 using GeodeDiscord.Database.Entities;
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Bson;
 using Serilog;
 
 namespace GeodeDiscord;
@@ -18,14 +22,6 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
 
         if (db.quotes.Any(q => q.messageId == message.Id)) {
             throw new MessageErrorException("This message is already quoted!");
-        }
-
-        if (message.Flags is not null && (message.Flags & MessageFlags.ComponentsV2) != 0) {
-            throw new MessageErrorException(
-                "Components v2 messages are not supported (yet?)\n" +
-                "-# if u rlly wanna quote this u can ask me to add it to the db manually " +
-                "and maybe someday i will add a components v2 renderer for actually viewing the quote"
-            );
         }
 
         return await MessageToQuote(context.User.Id, 0, message, context.Interaction.CreatedAt);
@@ -137,6 +133,18 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
                 continue;
             }
 
+            byte[] components = [];
+            if (message.Components.Count > 0) {
+                using MemoryStream stream = new();
+                await using BsonDataWriter bson = new(stream);
+                JsonSerializer.Create(new JsonSerializerSettings {
+                    ContractResolver = new DiscordContractResolver()
+                }).Serialize(bson, new Quote.FakeMessage {
+                    components = message.Components.Select(x => x.ToModel()).ToArray()
+                });
+                components = stream.ToArray();
+            }
+
             IMessage? reply = await Util.GetReplyAsync(message);
             return new Quote {
                 id = id,
@@ -148,6 +156,8 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
                 quoterId = quoterId,
                 authorId = message.Author.Id,
                 jumpUrl = message.Channel is null ? null : message.GetJumpUrl(),
+                content = message.Content,
+                components = components,
                 attachments = [..message.Attachments.Select(x => new Quote.Attachment {
                     id = x.Id,
                     name = string.IsNullOrWhiteSpace(x.Title) ? x.Filename : x.Title + Path.GetExtension(x.Filename),
@@ -180,7 +190,6 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
                     footerText = x.Footer?.Text,
                     timestamp = x.Timestamp
                 })],
-                content = message.Content,
                 replyAuthorId = reply?.Author.Id ?? 0,
                 replyMessageId = reply?.Id ?? 0,
                 replyContent = reply?.Content ?? ""
