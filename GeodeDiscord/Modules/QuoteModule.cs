@@ -19,7 +19,8 @@ namespace GeodeDiscord.Modules;
 public partial class QuoteModule(ApplicationDbContext db, QuoteEditor editor, QuoteRenderer renderer) :
     InteractionModuleBase<SocketInteractionContext> {
     private static readonly TimeSpan addQuoteTimeout = TimeSpan.FromSeconds(20.0);
-    private enum AddQuoteStatus { Waiting, Saved, Cancelled };
+    private enum QuoteShow { Hide, Show, Error }
+    private enum AddQuoteStatus { Waiting, Saved, Cancelled }
 
     [MessageCommand("Add quote"), CommandContextType(InteractionContextType.Guild), UsedImplicitly]
     public async Task Add(IMessage message) {
@@ -32,12 +33,17 @@ public partial class QuoteModule(ApplicationDbContext db, QuoteEditor editor, Qu
 
         IUserMessage response = await FollowupAsync(
             allowedMentions: AllowedMentions.None,
-            components: await GetAddMessageComponents(quote, show, status)
+            components: await GetAddMessageComponents(quote, show ? QuoteShow.Show : QuoteShow.Hide, status)
         );
+
         while (status == AddQuoteStatus.Waiting) {
             (bool setShow, status) = await CheckAddQuoteInteraction(
-                quote, response,
-                await InteractionUtility.WaitForMessageComponentAsync(Context.Client, response, addQuoteTimeout)
+                quote,
+                await InteractionUtility.WaitForInteractionAsync(
+                    Context.Client, addQuoteTimeout, x =>
+                        x is SocketMessageComponent y && y.Message.Id == response.Id ||
+                        x is SocketModal z && z.Message.Id == response.Id
+                )
             );
 
             show = status != AddQuoteStatus.Cancelled && (show || setShow);
@@ -47,7 +53,14 @@ public partial class QuoteModule(ApplicationDbContext db, QuoteEditor editor, Qu
                 await db.SaveChangesAsync();
             }
 
-            MessageComponent components = await GetAddMessageComponents(quote, show, status);
+            MessageComponent components;
+            try {
+                components = await GetAddMessageComponents(quote, show ? QuoteShow.Show : QuoteShow.Hide, status);
+            }
+            catch {
+                components = await GetAddMessageComponents(quote, QuoteShow.Error, status);
+            }
+
             await response.ModifyAsync(msg => {
                 msg.AllowedMentions = AllowedMentions.None;
                 msg.Components = components;
@@ -55,9 +68,9 @@ public partial class QuoteModule(ApplicationDbContext db, QuoteEditor editor, Qu
         }
     }
 
-    private async Task<(bool setShow, AddQuoteStatus status)> CheckAddQuoteInteraction(Quote quote,
-        IUserMessage response, SocketInteraction? interaction) {
-        while (true) {
+    private static async Task<(bool setShow, AddQuoteStatus status)> CheckAddQuoteInteraction(Quote quote,
+        SocketInteraction? interaction) {
+        try {
             switch (interaction) {
                 case null:
                     return (false, AddQuoteStatus.Saved);
@@ -65,8 +78,21 @@ public partial class QuoteModule(ApplicationDbContext db, QuoteEditor editor, Qu
                     await interaction.DeferAsync();
                     return (true, AddQuoteStatus.Waiting);
                 case SocketMessageComponent { Data.CustomId: "quote/add-rename-button" }:
-                    interaction = await AddQuoteRenameButton(response, interaction);
-                    continue;
+                    await interaction.RespondWithModalAsync(
+                        new ModalBuilder(
+                            "Rename Quote",
+                            "quote/add-rename-modal",
+                            new ModalComponentBuilder()
+                                .WithTextInput(
+                                    label: "New name",
+                                    customId: "quote/add-rename-modal-new-name",
+                                    placeholder: "geode creepypasta",
+                                    maxLength: 30,
+                                    required: false,
+                                    value: quote.name
+                                )
+                        ).Build());
+                    return (false, AddQuoteStatus.Waiting);
                 case SocketModal { Data.CustomId: "quote/add-rename-modal" } modal:
                     await interaction.DeferAsync();
                     quote.name = modal.Data.Components.First().Value;
@@ -79,29 +105,13 @@ public partial class QuoteModule(ApplicationDbContext db, QuoteEditor editor, Qu
                     return (false, AddQuoteStatus.Saved);
             }
         }
+        catch (Exception ex) {
+            Log.Error(ex, "Add quote failed");
+            return (false, AddQuoteStatus.Saved);
+        }
     }
 
-    private async Task<SocketInteraction?> AddQuoteRenameButton(IUserMessage response, SocketInteraction interaction) {
-        await interaction.RespondWithModalAsync(new ModalBuilder(
-            "Rename Quote",
-            "quote/add-rename-modal",
-            new ModalComponentBuilder()
-                .WithTextInput(
-                    label: "New name",
-                    customId: "quote/add-rename-modal-new-name",
-                    placeholder: "geode creepypasta",
-                    maxLength: 30,
-                    required: false
-                )
-        ).Build());
-        return await InteractionUtility.WaitForInteractionAsync(
-            Context.Client, addQuoteTimeout, x =>
-                x.Type == InteractionType.ModalSubmit && x is SocketModal y &&
-                y.Message.Id == response.Id
-        );
-    }
-
-    private async Task<MessageComponent> GetAddMessageComponents(Quote quote, bool show, AddQuoteStatus status) {
+    private async Task<MessageComponent> GetAddMessageComponents(Quote quote, QuoteShow show, AddQuoteStatus status) {
         ComponentBuilderV2 builder = new();
 
         // not gonna be 100% accurate but close enough
@@ -116,28 +126,36 @@ public partial class QuoteModule(ApplicationDbContext db, QuoteEditor editor, Qu
 
         switch (status) {
             case AddQuoteStatus.Waiting:
-                builder.WithTextDisplay(show ?
+                builder.WithTextDisplay(show == QuoteShow.Show ?
                     $"Quote will be saved{name} {timeoutTime}..." :
                     $"Quote {quote.jumpUrl} will be saved{name} {timeoutTime}..."
                 );
                 break;
             case AddQuoteStatus.Saved:
-                builder.WithTextDisplay(show ? "Quote saved!" : $"Quote {quote.jumpUrl} saved{name}!");
+                builder.WithTextDisplay(show == QuoteShow.Show ?
+                    "Quote saved!" :
+                    $"Quote {quote.jumpUrl} saved{name}!"
+                );
                 break;
             case AddQuoteStatus.Cancelled:
                 builder.WithTextDisplay($"~~Quote {quote.jumpUrl} will be saved `never`...~~");
                 break;
         }
 
-        if (show) {
-            builder.AddComponents(await renderer.Render(quote).ToArrayAsync());
+        switch (show) {
+            case QuoteShow.Show:
+                builder.AddComponents(await renderer.Render(quote).ToArrayAsync());
+                break;
+            case QuoteShow.Error:
+                builder.WithTextDisplay("-# `❌ Failed to render quote!`");
+                break;
         }
 
         if (status == AddQuoteStatus.Waiting) {
             builder.WithActionRow(x => x
                 .WithButton(
                     "Show", "quote/add-get-button", ButtonStyle.Secondary,
-                    new Emoji("🚿"), null, show)
+                    new Emoji("🚿"), null, show != QuoteShow.Hide)
                 .WithButton(
                     "Rename", "quote/add-rename-button", ButtonStyle.Secondary,
                     new Emoji("📝"))

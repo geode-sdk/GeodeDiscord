@@ -34,7 +34,7 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
         db.Add(quote);
 
         LogOnSave(() => Log.Information(
-            "{User} created quote {Id} from {MessageId}",
+            "{User} added quote {Id} from {MessageId}",
             context.User.Id, quote.GetFullName(), quote.messageId
         ));
 
