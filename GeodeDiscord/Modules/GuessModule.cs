@@ -280,7 +280,7 @@ public partial class GuessModule(ApplicationDbContext db, QuoteRenderer renderer
                     names.Add(match.Value);
                     continue;
                 }
-                names.Add($"`{await GetUserNameAsync(id) ?? id.ToString()}`");
+                names.Add($"`@{await GetUserNameAsync(id) ?? id.ToString()}`");
             }
             // ReSharper disable AccessToDisposedClosure
             using List<string>.Enumerator enumerator = names.GetEnumerator();
