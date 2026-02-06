@@ -167,10 +167,14 @@ public class QuoteImportModule(ApplicationDbContext db, QuoteEditor editor) :
         await process.Success($"Imported {imported}/{quotes.Count} quote attachments");
     }
 
+    // idc
+#pragma warning disable CS9113 // Parameter is unread.
+    // ReSharper disable once UnusedType.Global
     [Group("guesses", "Guesses.")]
     public class GuessesModule(ApplicationDbContext db) : InteractionModuleBase<SocketInteractionContext> {
         // ReSharper disable once UnusedMember.Local
         private Task<ImportProcess> StartImport(string name, string clarifier = "") =>
             ImportProcess.Start(Context, name, clarifier);
     }
+#pragma warning restore CS9113 // Parameter is unread.
 }
