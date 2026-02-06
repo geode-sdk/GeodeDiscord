@@ -321,8 +321,6 @@ public partial class GuessModule(ApplicationDbContext db, QuoteRenderer renderer
             .Select(x => new { x.startedAt, x.guessedAt })
             .AsAsyncEnumerable()
             .Select(x => (x.guessedAt - x.startedAt).Ticks)
-            // TODO: somehow fix these idk  if that isnt possible make them all 30s or somethin g
-            .Where(x => x <= TimeSpan.FromSeconds(60.0).Ticks)
             .SumAsync());
 
         double averageSeconds = total == 0 ? 0.0 : await db.guesses
