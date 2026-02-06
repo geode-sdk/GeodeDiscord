@@ -155,11 +155,12 @@ public class QuoteRenderer(DiscordSocketClient client) {
 
     private async IAsyncEnumerable<IMessageComponentBuilder> RenderQuoteEmbeds(QuoteComponentData data) {
         Dictionary<string, ICollection<string>> galleries = [];
-        List<EmbedComponentData> embeds = data.embeds
-            .Select(x => EmbedComponentData.From(x, galleries))
+        List<EmbedComponentData> embeds = await data.embeds
+            .ToAsyncEnumerable()
+            .SelectAwait(async x => await EmbedComponentData.From(x, galleries))
             .Where(x => x.HasValue)
             .Select(x => x!.Value)
-            .ToList();
+            .ToListAsync();
         foreach (EmbedComponentData embed in embeds) {
             yield return new SeparatorBuilder();
             await foreach (IMessageComponentBuilder? component in RenderEmbed(embed)) {
@@ -184,26 +185,29 @@ public class QuoteRenderer(DiscordSocketClient client) {
         string? footerText = null,
         DateTimeOffset? timestamp = null
     ) {
-        public static EmbedComponentData? From(Quote.Embed embed, Dictionary<string, ICollection<string>> galleries) {
+        public static async Task<EmbedComponentData?> From(Quote.Embed embed,
+            Dictionary<string, ICollection<string>> galleries) {
+            string? videoUrl = embed.videoUrl is not null && await IsVideoFile(embed.videoUrl) ? embed.videoUrl : null;
             if (embed.url is not null && galleries.TryGetValue(embed.url, out ICollection<string>? gallery)) {
-                string? media = embed.videoUrl ?? embed.imageUrl;
+                string? media = videoUrl ?? embed.imageUrl;
                 if (media is not null)
                     gallery.Add(media);
                 return null;
             }
             EmbedComponentData data = embed.type switch {
-                EmbedType.Image => new EmbedComponentData { gallery = embed.url is null ? [] : [embed.url] },
-                EmbedType.Video or EmbedType.Gifv => new EmbedComponentData {
-                    gallery = embed.videoUrl is null ? [] : [embed.videoUrl]
+                EmbedType.Gifv => new EmbedComponentData {
+                    gallery = videoUrl is null ? [] : [videoUrl]
                 },
-                EmbedType.Article => new EmbedComponentData {
+                EmbedType.Rich => new EmbedComponentData {
                     provider = embed.providerName is null ? null : (embed.providerName, embed.providerUrl),
                     authorIcon = embed.authorIconUrl,
                     author = embed.authorName is null ? null : (embed.authorName, embed.authorUrl),
                     title = embed.title,
                     url = embed.url,
+                    thumbnail = embed.thumbnailUrl,
                     description = embed.description,
-                    gallery = embed.thumbnailUrl is null ? [] : [embed.thumbnailUrl],
+                    gallery = videoUrl is not null ? [videoUrl] :
+                        embed.imageUrl is not null ? [embed.imageUrl] : [],
                     footerIcon = embed.footerIconUrl,
                     footerText = embed.footerText,
                     timestamp = embed.timestamp
@@ -214,10 +218,10 @@ public class QuoteRenderer(DiscordSocketClient client) {
                     author = embed.authorName is null ? null : (embed.authorName, embed.authorUrl),
                     title = embed.title,
                     url = embed.url,
-                    thumbnail = embed.thumbnailUrl,
                     description = embed.description,
-                    gallery = embed.videoUrl is not null ? [embed.videoUrl] :
-                        embed.imageUrl is not null ? [embed.imageUrl] : [],
+                    gallery = videoUrl is not null ? [videoUrl] :
+                        embed.imageUrl is not null ? [embed.imageUrl] :
+                        embed.thumbnailUrl is not null ? [embed.thumbnailUrl] : [],
                     footerIcon = embed.footerIconUrl,
                     footerText = embed.footerText,
                     timestamp = embed.timestamp
@@ -226,6 +230,25 @@ public class QuoteRenderer(DiscordSocketClient client) {
             if (data.url is not null)
                 galleries.Add(data.url, data.gallery);
             return data;
+        }
+
+        private static async Task<bool> IsVideoFile(string url) {
+            if (url.StartsWith("https://cdn.discordapp.com") ||
+                url.StartsWith("https://media.discordapp.net"))
+                return true;
+            try {
+                using HttpClient http = new();
+                HttpResponseMessage response = await http.GetAsync(url);
+                if (!response.IsSuccessStatusCode)
+                    return false;
+                string? mediaType = response.Content.Headers.ContentType?.MediaType;
+                if (mediaType is null || !mediaType.StartsWith("video/"))
+                    return false;
+            }
+            catch {
+                return false;
+            }
+            return true;
         }
     }
 
