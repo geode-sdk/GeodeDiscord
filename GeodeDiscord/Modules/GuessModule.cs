@@ -222,8 +222,8 @@ public partial class GuessModule(ApplicationDbContext db, QuoteRenderer renderer
                 .AddComponents(renderedQuote)
                 .WithActionRow(x => {
                     x.WithButton("Guess again!", "guess/guess-again", ButtonStyle.Primary, new Emoji("❓"));
-                    //if (guessId != 0)
-                    //    x.WithButton("Fix names", "guess/guess-fix-names", ButtonStyle.Secondary, new Emoji("🔧"));
+                    if (guessId != 0)
+                        x.WithButton("Fix names", "guess/guess-fix-names", ButtonStyle.Secondary, new Emoji("🔧"));
                 })
                 .Build();
         });
@@ -239,44 +239,57 @@ public partial class GuessModule(ApplicationDbContext db, QuoteRenderer renderer
         await DeferAsync();
     }
 
-    // TODO: update this, lol
     [ComponentInteraction("guess-fix-names"), UsedImplicitly]
     public async Task GuessFixNames() {
         if (Context.Interaction is not SocketMessageComponent interaction)
             throw new MessageErrorException("Failed to fix names: interaction is not from a message..?");
 
         SocketUserMessage msg = interaction.Message;
-        Embed? embed = msg.Embeds.FirstOrDefault();
-        if (embed?.Author?.Name is null)
+
+        if (msg.Flags is null || (msg.Flags & MessageFlags.ComponentsV2) == 0)
+            throw new MessageErrorException("Failed to fix names: message not using Components v2!");
+
+        if (msg.Components.Skip(1).FirstOrDefault() is not ContainerComponent)
             throw new MessageErrorException("Failed to fix names: unable to detect quote!");
 
-        Match? authorMatch = AuthorIdRegex().Matches(embed.Description).LastOrDefault();
-        if (authorMatch is null || !authorMatch.Success || !authorMatch.Groups[1].Success)
-            throw new MessageErrorException("Failed to fix names: unable to detect quote author!");
+        await DeferAsync();
 
-        if (!ulong.TryParse(authorMatch.Groups[1].ValueSpan, out ulong authorId))
-            throw new MessageErrorException("Failed to fix names: unable to parse quote author ID!");
+        ComponentBuilderV2 builder = msg.Components.ToBuilder();
 
-        Match match = ShowedIdRegex().Match(msg.Content);
-        if (!match.Success || !match.Groups[1].Success)
-            throw new MessageErrorException("Failed to fix names: unable to detect showed ID!");
-
-        if (!ulong.TryParse(match.Groups[1].ValueSpan, out ulong showedId))
-            throw new MessageErrorException("Failed to fix names: unable to parse showed ID!");
-
-        string correctName = await GetUserNameAsync(authorId) ?? authorId.ToString();
-        string replacedName = authorId == showedId ?
-            $"by `{correctName}`" :
-            $"by `{correctName}`, not `{await GetUserNameAsync(showedId) ?? showedId.ToString()}`";
+        await GuessFixNames(builder);
 
         await msg.ModifyAsync(x => {
-            x.Content = $"{msg.Content[..match.Index]}{replacedName}{msg.Content[(match.Index + match.Length)..]}";
             x.AllowedMentions = AllowedMentions.None;
-            x.Embeds = msg.Embeds.ToArray();
-            x.Components = new ComponentBuilder()
-                .WithButton("Guess again!", "guess/guess-again", ButtonStyle.Primary, new Emoji("❓"))
-                .Build();
+            x.Components = builder.Build();
         });
+    }
+
+    // this is stupid
+    private async Task GuessFixNames(IComponentContainer container) {
+        container.Components.RemoveAll(x => x is ButtonBuilder { CustomId: "guess/guess-fix-names" });
+        foreach (IMessageComponentBuilder component in container.Components) {
+            if (component is not TextDisplayBuilder textDisplay) {
+                if (component is IComponentContainer child)
+                    await GuessFixNames(child);
+                continue;
+            }
+            List<string> names = [];
+            foreach (Match match in MentionRegex().Matches(textDisplay.Content)) {
+                if (!match.Success || !match.Groups[1].Success ||
+                    !ulong.TryParse(match.Groups[1].ValueSpan, out ulong id)) {
+                    names.Add(match.Value);
+                    continue;
+                }
+                names.Add($"`{await GetUserNameAsync(id) ?? id.ToString()}`");
+            }
+            // ReSharper disable AccessToDisposedClosure
+            using List<string>.Enumerator enumerator = names.GetEnumerator();
+            textDisplay.Content = MentionRegex().Replace(textDisplay.Content, _ => {
+                enumerator.MoveNext();
+                return enumerator.Current;
+            });
+            // ReSharper restore AccessToDisposedClosure
+        }
     }
 
     // TODO: make this whole stats thing better formatted and show more interesting statistics and stuff
@@ -468,9 +481,6 @@ public partial class GuessModule(ApplicationDbContext db, QuoteRenderer renderer
             """);
 #pragma warning restore EF1002
 
-    [GeneratedRegex(@"\\- <@(.*?)>")]
-    private static partial Regex AuthorIdRegex();
-
-    [GeneratedRegex("(?:not )?by <@(.*?)>")]
-    private static partial Regex ShowedIdRegex();
+    [GeneratedRegex("<@(.*?)>")]
+    private static partial Regex MentionRegex();
 }
