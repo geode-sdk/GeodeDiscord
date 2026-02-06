@@ -137,7 +137,7 @@ public class QuoteImportModule(ApplicationDbContext db, QuoteEditor editor) :
                     await process.ReportProgress($"{imported}/{quotes.Count} quotes");
                 }
 
-                if (await Util.GetChannelAsync(Context.Client, quote.channelId) is not IMessageChannel channel) {
+                if (await Util.GetChannelAsyncSafe(Context.Client, quote.channelId) is not IMessageChannel channel) {
                     await process.ReportFail("channel not found");
                     continue;
                 }

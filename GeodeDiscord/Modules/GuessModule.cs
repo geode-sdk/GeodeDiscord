@@ -18,7 +18,7 @@ namespace GeodeDiscord.Modules;
 public partial class GuessModule(ApplicationDbContext db, QuoteRenderer renderer) :
     InteractionModuleBase<SocketInteractionContext> {
     private async Task<string?> GetUserNameAsync(ulong id) {
-        IUser? user = await Util.GetUserAsync(Context.Client, id);
+        IUser? user = await Util.GetUserAsyncSafe(Context.Client, id);
         return user?.GlobalName ?? user?.Username ?? null;
     }
 

@@ -241,10 +241,10 @@ public partial class QuoteModule(ApplicationDbContext db, QuoteEditor editor, Qu
         StringBuilder builder = new();
         // defer in case getting the channel and all the users is slow
         await DeferAsync();
-        IChannel? channel = await Util.GetChannelAsync(Context.Client, quote.channelId);
-        IUser? quoter = await Util.GetUserAsync(Context.Client, quote.quoterId);
-        IUser? author = await Util.GetUserAsync(Context.Client, quote.authorId);
-        IUser? replyAuthor = await Util.GetUserAsync(Context.Client, quote.replyAuthorId);
+        IChannel? channel = await Util.GetChannelAsyncSafe(Context.Client, quote.channelId);
+        IUser? quoter = await Util.GetUserAsyncSafe(Context.Client, quote.quoterId);
+        IUser? author = await Util.GetUserAsyncSafe(Context.Client, quote.authorId);
+        IUser? replyAuthor = await Util.GetUserAsyncSafe(Context.Client, quote.replyAuthorId);
         builder.AppendLine($"- Message: `{quote.messageId}` {quote.jumpUrl}");
         builder.AppendLine($"- ID: `{quote.id}`");
         builder.AppendLine($"- Name: `{quote.name}`");

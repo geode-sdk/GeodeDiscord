@@ -29,6 +29,26 @@ public static class Util {
         _ => LogEventLevel.Information
     };
 
+    public static async Task<IUser?> GetUserAsyncSafe(DiscordSocketClient client, ulong id) {
+        try {
+            return await GetUserAsync(client, id);
+        }
+        catch (Exception ex) {
+            Log.Error(ex, "Failed to get user {Id}", id);
+            return null;
+        }
+    }
+
+    public static async Task<IChannel?> GetChannelAsyncSafe(DiscordSocketClient client, ulong id) {
+        try {
+            return await GetChannelAsync(client, id);
+        }
+        catch (Exception ex) {
+            Log.Error(ex, "Failed to get channel {Id}", id);
+            return null;
+        }
+    }
+
     private static readonly ConcurrentDictionary<ulong, IUser?> extraUserCache = [];
     public static async Task<IUser?> GetUserAsync(DiscordSocketClient client, ulong id) {
         if (id == 0)
