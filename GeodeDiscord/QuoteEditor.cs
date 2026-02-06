@@ -81,7 +81,7 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
         if (oldQuote.messageId != newQuote.messageId)
             throw new InvalidOperationException("Cannot change message ID of a quote");
         db.Remove(oldQuote);
-        db.Update(newQuote);
+        db.Add(newQuote);
 
         LogOnSave(() => Log.Information(
             "{User} updated quote {OldName} to {NewName}",
@@ -133,18 +133,6 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
                 continue;
             }
 
-            byte[] components = [];
-            if (message.Components.Count > 0) {
-                using MemoryStream stream = new();
-                await using BsonDataWriter bson = new(stream);
-                JsonSerializer.Create(new JsonSerializerSettings {
-                    ContractResolver = new DiscordContractResolver()
-                }).Serialize(bson, new Quote.FakeMessage {
-                    components = message.Components.Select(x => x.ToModel()).ToArray()
-                });
-                components = stream.ToArray();
-            }
-
             IMessage? reply = await Util.GetReplyAsync(message);
             return new Quote {
                 id = id,
@@ -157,43 +145,64 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
                 authorId = message.Author.Id,
                 jumpUrl = message.Channel is null ? null : message.GetJumpUrl(),
                 content = message.Content,
-                components = components,
-                attachments = [..message.Attachments.Select(x => new Quote.Attachment {
-                    id = x.Id,
-                    name = string.IsNullOrWhiteSpace(x.Title) ? x.Filename : x.Title + Path.GetExtension(x.Filename),
-                    size = x.Size,
-                    url = x.Url,
-                    contentType = x.ContentType,
-                    description = x.Description,
-                    isSpoiler = x.Filename.StartsWith("SPOILER_") // seems to be the actual condition
-                })],
-                embeds = [..message.Embeds.Select(x => new Quote.Embed {
-                    type = x.Type,
-                    color = x.Color,
-                    providerName = x.Provider?.Name,
-                    providerUrl = x.Provider?.Url,
-                    authorIconUrl = x.Author?.IconUrl,
-                    authorName = x.Author?.Name,
-                    authorUrl = x.Author?.Url,
-                    title = x.Title,
-                    url = x.Url,
-                    thumbnailUrl = x.Thumbnail?.Url,
-                    description = x.Description,
-                    fields = [..x.Fields.Select(y => new Quote.Embed.Field {
-                        name = y.Name,
-                        value = y.Value,
-                        inline = y.Inline
-                    })],
-                    videoUrl = x.Video?.Url,
-                    imageUrl = x.Image?.Url,
-                    footerIconUrl = x.Footer?.IconUrl,
-                    footerText = x.Footer?.Text,
-                    timestamp = x.Timestamp
-                })],
+                components = await MessageComponentsToQuote(message),
+                attachments = MessageAttachmentsToQuote(message),
+                embeds = MessageEmbedsToQuote(message),
                 replyAuthorId = reply?.Author.Id ?? 0,
                 replyMessageId = reply?.Id ?? 0,
                 replyContent = reply?.Content ?? ""
             };
         }
+    }
+
+    public static async Task<byte[]> MessageComponentsToQuote(IMessage message) {
+        if (message.Components.Count <= 0)
+            return [];
+        using MemoryStream stream = new();
+        await using BsonDataWriter bson = new(stream);
+        JsonSerializer.Create(new JsonSerializerSettings {
+            ContractResolver = new DiscordContractResolver()
+        }).Serialize(bson, new Quote.FakeMessage {
+            components = message.Components.Select(x => x.ToModel()).ToArray()
+        });
+        return stream.ToArray();
+    }
+
+    public static ICollection<Quote.Attachment> MessageAttachmentsToQuote(IMessage message) {
+        return [..message.Attachments.Select(x => new Quote.Attachment {
+            id = x.Id,
+            name = string.IsNullOrWhiteSpace(x.Title) ? x.Filename : x.Title + Path.GetExtension(x.Filename),
+            size = x.Size,
+            url = x.Url,
+            contentType = x.ContentType,
+            description = x.Description,
+            isSpoiler = x.Filename.StartsWith("SPOILER_") // seems to be the actual condition
+        })];
+    }
+
+    public static ICollection<Quote.Embed> MessageEmbedsToQuote(IMessage message) {
+        return [..message.Embeds.Select(x => new Quote.Embed {
+            type = x.Type,
+            color = x.Color,
+            providerName = x.Provider?.Name,
+            providerUrl = x.Provider?.Url,
+            authorIconUrl = x.Author?.IconUrl,
+            authorName = x.Author?.Name,
+            authorUrl = x.Author?.Url,
+            title = x.Title,
+            url = x.Url,
+            thumbnailUrl = x.Thumbnail?.Url,
+            description = x.Description,
+            fields = [..x.Fields.Select(y => new Quote.Embed.Field {
+                name = y.Name,
+                value = y.Value,
+                inline = y.Inline
+            })],
+            videoUrl = x.Video?.Url,
+            imageUrl = x.Image?.Url,
+            footerIconUrl = x.Footer?.IconUrl,
+            footerText = x.Footer?.Text,
+            timestamp = x.Timestamp
+        })];
     }
 }

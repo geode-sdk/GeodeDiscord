@@ -87,7 +87,7 @@ public class QuoteImportModule(ApplicationDbContext db, QuoteEditor editor) :
         public async Task ReportProgress(string message) {
             string clarified = string.Join(' ', [name, .._clarifiers.Take(1)]);
             await context.Interaction.ModifyOriginalResponseAsync(prop =>
-                prop.Content = $"Importing ${clarified}: {message}"
+                prop.Content = $"Importing {clarified}: {message}"
             );
         }
 
@@ -96,7 +96,7 @@ public class QuoteImportModule(ApplicationDbContext db, QuoteEditor editor) :
                 Log.Warning("[quote-import] {Message}: {Reason}", message, reason);
             else
                 Log.Warning(exception, "[quote-import] {Message}", message);
-            await context.Interaction.FollowupAsync($"⚠️ ${message}! ({reason})");
+            await context.Interaction.FollowupAsync($"⚠️ {message}! ({reason})");
         }
 
         public async Task ReportFail(string reason, Exception? exception = null) {
@@ -114,15 +114,19 @@ public class QuoteImportModule(ApplicationDbContext db, QuoteEditor editor) :
     private Task<ImportProcess> StartImport(string name, string clarifier = "") =>
         ImportProcess.Start(Context, name, clarifier);
 
-    [SlashCommand("import-reply-contents", "Import reply contents."),
+    [SlashCommand("import-attachments", "Import attachments."),
      CommandContextType(InteractionContextType.Guild),
      UsedImplicitly]
-    public async Task ImportReplyContents() {
-        ImportProcess process = await StartImport("reply contents");
+    public async Task ImportAttachments() {
+        ImportProcess process = await StartImport("attachments");
 
         await process.ReportProgress("querying quotes");
         List<Quote> quotes = await db.quotes
-            .Where(x => x.replyAuthorId != 0 && x.replyMessageId == 0)
+            .Where(x =>
+                x.components.Length == 0 &&
+                x.attachments.Count == 0 &&
+                x.embeds.Count == 0
+            )
             .ToListAsync();
 
         int imported = 0;
@@ -144,16 +148,11 @@ public class QuoteImportModule(ApplicationDbContext db, QuoteEditor editor) :
                     continue;
                 }
 
-                IMessage? reply = await Util.GetReplyAsync(message);
-                if (reply is null) {
-                    await process.ReportFail("reply not found");
-                    continue;
-                }
-
                 editor.Update(
                     quote, quote with {
-                        replyMessageId = reply.Id,
-                        replyContent = reply.Content
+                        components = await QuoteEditor.MessageComponentsToQuote(message),
+                        attachments = QuoteEditor.MessageAttachmentsToQuote(message),
+                        embeds = QuoteEditor.MessageEmbedsToQuote(message)
                     }
                 );
                 imported++;
@@ -165,7 +164,7 @@ public class QuoteImportModule(ApplicationDbContext db, QuoteEditor editor) :
 
         await db.SaveChangesAsync();
 
-        await process.Success($"Imported {imported}/{quotes.Count} reply contents");
+        await process.Success($"Imported {imported}/{quotes.Count} quote attachments");
     }
 
     [Group("guesses", "Guesses.")]
