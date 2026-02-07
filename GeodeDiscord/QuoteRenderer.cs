@@ -293,7 +293,7 @@ public class QuoteRenderer(DiscordSocketClient client) {
         if (data.title is null)
             return;
         if (data.url is null)
-            text.AppendLine($"### {data.url}");
+            text.AppendLine($"### {data.title}");
         else
             text.AppendLine($"### [{data.title}]({data.url})");
     }
