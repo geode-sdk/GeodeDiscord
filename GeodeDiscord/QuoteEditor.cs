@@ -176,7 +176,7 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
             url = x.Url,
             contentType = x.ContentType,
             description = x.Description,
-            isSpoiler = x.Filename.StartsWith("SPOILER_") // seems to be the actual condition
+            isSpoiler = x.IsSpoiler()
         })];
     }
 

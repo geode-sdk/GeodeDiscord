@@ -86,4 +86,19 @@ public static class Util {
         str.Append('s');
         return str.ToString();
     }
+
+    // https://stackoverflow.com/a/4967106
+    private static readonly string[] sizeSuffixes = [ "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" ];
+    public static string FormatSize(int size) {
+        if (size == 0) {
+            return $"{0:0.#} {sizeSuffixes[0]}";
+        }
+
+        int absSize = Math.Abs(size);
+        int power = (int)Math.Log(absSize, 1024.0);
+        int unit = power >= sizeSuffixes.Length ? sizeSuffixes.Length - 1 : power;
+        double normSize = absSize / Math.Pow(1024, unit);
+
+        return $"{(size < 0 ? "-" : null)}{normSize:0.#} {sizeSuffixes[unit]}";
+    }
 }

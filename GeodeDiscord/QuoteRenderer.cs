@@ -142,7 +142,7 @@ public class QuoteRenderer(DiscordSocketClient client) {
             if (attachment.isSpoiler)
                 attachmentsText.Append("||");
             attachmentsText.Append($"`{attachment.name}`:");
-            attachmentsText.Append($" `{FormatSize(attachment.size)}`");
+            attachmentsText.Append($" `{Util.FormatSize(attachment.size)}`");
             attachmentsText.Append($" [download]({attachment.url})");
             if (attachment.description is not null)
                 attachmentsText.Append($" (`{attachment.description}`)");
@@ -470,20 +470,5 @@ public class QuoteRenderer(DiscordSocketClient client) {
             Log.Error(ex, "Failed to get icon emote");
             return null;
         }
-    }
-
-    // https://stackoverflow.com/a/4967106
-    private static readonly string[] sizeSuffixes = [ "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" ];
-    private static string FormatSize(int size) {
-        if (size == 0) {
-            return $"{0:0.#} {sizeSuffixes[0]}";
-        }
-
-        int absSize = Math.Abs(size);
-        int power = (int)Math.Log(absSize, 1024.0);
-        int unit = power >= sizeSuffixes.Length ? sizeSuffixes.Length - 1 : power;
-        double normSize = absSize / Math.Pow(1024, unit);
-
-        return $"{(size < 0 ? "-" : null)}{normSize:0.#} {sizeSuffixes[unit]}";
     }
 }
