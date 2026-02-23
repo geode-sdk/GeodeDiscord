@@ -106,6 +106,16 @@ public static class Program {
             return Task.CompletedTask;
         };
 
+        client.MessageReceived += async message => {
+            if (message.Channel.Id != 1202076732346077235)
+                return;
+            if (message is not SocketUserMessage userMessage)
+                return;
+            if (!message.Author.IsWebhook)
+                return;
+            await userMessage.CrosspostAsync();
+        };
+
         InteractionHandler interactionHandler = services.GetRequiredService<InteractionHandler>();
         await interactionHandler.InitializeAsync();
 
