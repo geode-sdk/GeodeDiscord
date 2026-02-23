@@ -105,12 +105,15 @@ public static class Program {
             Log.Information("{Count} members downloaded for guild {Guild}", guild.DownloadedMemberCount, guild.Name);
             return Task.CompletedTask;
         };
-        client.MessageReceived += message => {
-            if (message.Channel is INewsChannel && message is SocketUserMessage userMessage && message.Author.IsWebhook)
-            {
-                userMessage.CrosspostAsync();
-            }
-            return Task.CompletedTask;
+
+        client.MessageReceived += async message => {
+            if (message.Channel.Id != 1202076732346077235)
+                return;
+            if (message is not SocketUserMessage userMessage)
+                return;
+            if (!message.Author.IsWebhook)
+                return;
+            await userMessage.CrosspostAsync();
         };
 
         InteractionHandler interactionHandler = services.GetRequiredService<InteractionHandler>();
