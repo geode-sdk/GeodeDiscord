@@ -43,13 +43,12 @@ public class QuoteRenderer(DiscordSocketClient client) {
         public static async Task<QuoteComponentData> Default(DiscordSocketClient client, Quote quote) {
             IChannel? channel = await Util.GetChannelAsync(client, quote.channelId);
 
-            bool hasReply = quote.replyAuthorId != 0 && quote.replyMessageId != 0 &&
-                !string.IsNullOrEmpty(quote.replyContent);
+            bool hasReply = quote.replyAuthorId != 0 && quote.replyMessageId != 0;
 
             return new QuoteComponentData {
                 fullName = quote.GetFullName(),
-                reply = hasReply ? new Reply($"<@{quote.replyAuthorId}>", quote.replyContent) : null,
-                content = string.IsNullOrWhiteSpace(quote.content) ? null : quote.content,
+                reply = hasReply ? new Reply($"<@{quote.replyAuthorId}>", quote.GetReplyContent()) : null,
+                content = string.IsNullOrWhiteSpace(quote.GetContent()) ? null : quote.GetContent(),
                 attachments = quote.attachments,
                 embeds = quote.embeds,
                 components = quote.components,
@@ -62,13 +61,12 @@ public class QuoteRenderer(DiscordSocketClient client) {
         }
 
         public static QuoteComponentData Censored(Quote quote) {
-            bool hasReply = quote.replyAuthorId != 0 && quote.replyMessageId != 0 &&
-                !string.IsNullOrEmpty(quote.replyContent);
+            bool hasReply = quote.replyAuthorId != 0 && quote.replyMessageId != 0;
 
             return new QuoteComponentData {
                 fullName = "?????",
-                reply = hasReply ? new Reply("?????", quote.replyContent) : null,
-                content = !string.IsNullOrWhiteSpace(quote.content) ? quote.content : null,
+                reply = hasReply ? new Reply("?????", quote.GetReplyContent()) : null,
+                content = string.IsNullOrWhiteSpace(quote.GetContent()) ? null : quote.GetContent(),
                 attachments = quote.attachments,
                 embeds = quote.embeds,
                 components = quote.components,

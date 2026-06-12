@@ -28,16 +28,21 @@ public record Quote {
     public required byte[] components { get; init; }
     public virtual required ICollection<Attachment> attachments { get; init; }
     public virtual required ICollection<Embed> embeds { get; init; }
+    public required bool contentRedacted { get; init; }
 
     // reply
     public required ulong replyAuthorId { get; init; }
     public required ulong replyMessageId { get; init; }
     public required string replyContent { get; init; }
+    public required bool replyRedacted { get; init; }
 
     public string GetFullName() {
         string idStr = id == 0 ? "tbd" : id.ToString();
         return string.IsNullOrWhiteSpace(name) ? idStr : $"{idStr}: {name}";
     }
+
+    public string GetContent() => contentRedacted ? "`[REDACTED BY USER REQUEST]`" : content;
+    public string GetReplyContent() => replyRedacted ? "`[REDACTED BY USER REQUEST]" : replyContent;
 
     [Owned]
     public record Attachment {

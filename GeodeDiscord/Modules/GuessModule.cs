@@ -32,6 +32,7 @@ public partial class GuessModule(ApplicationDbContext db, QuoteRenderer renderer
 
         Quote quote = await db.quotes
             .Where(x => x.components.Length == 0) // no components
+            .Where(x => !x.contentRedacted && !x.replyRedacted) // no redactions
             .OrderBy(_ => EF.Functions.Random())
             .FirstAsync();
 

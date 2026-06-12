@@ -2,6 +2,7 @@
 using Discord.Interactions;
 using Discord.Net.Converters;
 using Discord.Rest;
+using Discord.WebSocket;
 using GeodeDiscord.Database;
 using GeodeDiscord.Database.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -60,13 +61,18 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
         ));
     }
 
-    public async Task Update(Quote quote) {
+    public async Task Update(Quote quote, bool unredactContent = false, bool unredactReply = false) {
         if (quote.channelId == 0)
             throw new MessageErrorException("Failed to update quote! (channel ID not set)");
 
-        IMessageChannel? channel = context.Guild.GetTextChannel(quote.channelId) ??
-            context.Guild.GetStageChannel(quote.channelId) ??
-            context.Guild.GetVoiceChannel(quote.channelId);
+        IMessageChannel? channel = null;
+        foreach (SocketGuild guild in context.Client.Guilds) {
+            channel = guild.GetTextChannel(quote.channelId) ??
+                guild.GetStageChannel(quote.channelId) ??
+                guild.GetVoiceChannel(quote.channelId);
+            if (channel is not null)
+                break;
+        }
         if (channel is null)
             throw new MessageErrorException($"Failed to update quote! (channel {quote.channelId} not found)");
 
@@ -74,7 +80,15 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
         if (message is null)
             throw new MessageErrorException($"Failed to update quote! (message {quote.messageId} not found)");
 
-        Update(quote, await MessageToQuote(quote.quoterId, quote.id, message, context.Interaction.CreatedAt, quote));
+        Quote oldQuote = quote;
+        if (unredactContent || unredactReply) {
+            quote = quote with {
+                contentRedacted = !unredactContent && quote.contentRedacted,
+                replyRedacted = !unredactReply && quote.replyRedacted
+            };
+        }
+
+        Update(oldQuote, await MessageToQuote(quote.quoterId, quote.id, message, context.Interaction.CreatedAt, quote));
     }
 
     public void Update(Quote oldQuote, Quote newQuote) {
@@ -87,6 +101,19 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
             "{User} updated quote {OldName} to {NewName}",
             context.User.Id, oldQuote.GetFullName(), newQuote.GetFullName()
         ));
+    }
+
+    public void Redact(Quote quote, bool content, bool reply) {
+        Update(quote, quote with {
+            content = content ? "" : quote.content,
+            components = content ? [] : quote.components,
+            attachments = content ? [] : quote.attachments,
+            embeds = content ? [] : quote.embeds,
+            contentRedacted = content || quote.contentRedacted,
+
+            replyContent = reply ? "" : quote.replyContent,
+            replyRedacted = reply || quote.replyRedacted
+        });
     }
 
     private int _onSaveLogCount;
@@ -123,7 +150,9 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
         return refMessage ?? null;
     }
 
-    private static async Task<Quote> MessageToQuote(ulong quoterId, int id, IMessage message,
+    private async Task<bool> IsUserRedacted(ulong id) => await db.optOuts.AnyAsync(x => x.userId == id);
+
+    private async Task<Quote> MessageToQuote(ulong quoterId, int id, IMessage message,
         DateTimeOffset timestamp, Quote? original = null) {
         while (true) {
             // if we're just quoting a forwarded message, quote the forwarded message instead
@@ -134,6 +163,11 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
             }
 
             IMessage? reply = await Util.GetReplyAsync(message);
+
+            bool contentRedacted = await IsUserRedacted(message.Author.Id) || (original?.contentRedacted ?? false);
+            bool replyRedacted = reply is not null &&
+                (await IsUserRedacted(reply.Author.Id) || (original?.replyRedacted ?? false));
+
             return new Quote {
                 id = id,
                 name = original?.name ?? "",
@@ -144,13 +178,15 @@ public class QuoteEditor(ApplicationDbContext db, SocketInteractionContext conte
                 quoterId = quoterId,
                 authorId = message.Author.Id,
                 jumpUrl = message.Channel is null ? null : message.GetJumpUrl(),
-                content = message.Content,
-                components = await MessageComponentsToQuote(message),
-                attachments = MessageAttachmentsToQuote(message),
-                embeds = MessageEmbedsToQuote(message),
+                content = contentRedacted ? "" : message.Content,
+                components = contentRedacted ? [] : await MessageComponentsToQuote(message),
+                attachments = contentRedacted ? [] : MessageAttachmentsToQuote(message),
+                embeds = contentRedacted ? [] : MessageEmbedsToQuote(message),
+                contentRedacted = contentRedacted,
                 replyAuthorId = reply?.Author.Id ?? 0,
                 replyMessageId = reply?.Id ?? 0,
-                replyContent = reply?.Content ?? ""
+                replyContent = replyRedacted ? "" : reply?.Content ?? "",
+                replyRedacted = replyRedacted
             };
         }
     }
