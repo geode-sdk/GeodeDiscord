@@ -16,6 +16,7 @@
       </PackageReference>
       <PackageReference Include="Discord.Net" Version="3.20.1" />
       <PackageReference Include="Discord.Net.Rest" Version="3.20.1" Publicize="true" />
+      <PackageReference Include="Discord.Net.WebSocket" Version="3.20.1" Publicize="true" />
       <PackageReference Include="FuzzySharp" Version="2.0.2" />
       <PackageReference Include="JetBrains.Annotations" Version="2025.2.4" />
       <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.17" />
