@@ -15,7 +15,7 @@ public class PrivacyModule(ApplicationDbContext db, QuoteEditor editor) :
     public async Task Policy() {
         await RespondAsync(
             """
-            ## Geode Discord Bot's Privacy Policy
+            ## Geode Discord Bot Privacy Policy
             ```
             TODO: write the privacy policy
             ```
@@ -29,11 +29,18 @@ public class PrivacyModule(ApplicationDbContext db, QuoteEditor editor) :
         Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
         if (quote is null)
             throw new MessageErrorException("Quote not found!");
-        if (quote.authorId != Context.User.Id && quote.replyAuthorId != Context.User.Id)
+
+        bool content = quote.authorId == Context.User.Id;
+        bool reply = quote.replyAuthorId == Context.User.Id;
+
+        if (!content && !reply)
             throw new MessageErrorException("You are not the author of the quote nor the replied message!");
-        editor.Redact(quote, quote.authorId == Context.User.Id, quote.replyAuthorId == Context.User.Id);
+
+        editor.Redact(quote, content, reply);
         await db.SaveChangesAsync();
-        await RespondAsync($"Quote **{quote.GetFullName()}** redacted!");
+
+        string scope = content ? reply ? "content and reply" : "content" : "reply";
+        await RespondAsync($"Quote **{quote.GetFullName()}** {scope} redacted!");
     }
 
     [SlashCommand("unredact", "Unredacts the specified quote of you."), UsedImplicitly]
@@ -41,11 +48,18 @@ public class PrivacyModule(ApplicationDbContext db, QuoteEditor editor) :
         Quote? quote = await db.quotes.FirstOrDefaultAsync(q => q.id == id);
         if (quote is null)
             throw new MessageErrorException("Quote not found!");
-        if (quote.authorId != Context.User.Id && quote.replyAuthorId != Context.User.Id)
+
+        bool content = quote.authorId == Context.User.Id;
+        bool reply = quote.replyAuthorId == Context.User.Id;
+
+        if (!content && !reply)
             throw new MessageErrorException("You are not the author of the quote nor the replied message!");
-        await editor.Update(quote, quote.authorId == Context.User.Id, quote.replyAuthorId == Context.User.Id);
+
+        await editor.Update(quote, content, reply);
         await db.SaveChangesAsync();
-        await RespondAsync($"Quote **{quote.GetFullName()}** redacted!");
+
+        string scope = content ? reply ? "content and reply" : "content" : "reply";
+        await RespondAsync($"Quote **{quote.GetFullName()}** {scope} unredacted!");
     }
 
     [SlashCommand("opt-out", "Redact all existing and future quotes of you."), UsedImplicitly]
