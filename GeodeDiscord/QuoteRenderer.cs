@@ -157,7 +157,7 @@ public class QuoteRenderer(DiscordSocketClient client) {
         Dictionary<string, ICollection<string>> galleries = [];
         List<EmbedComponentData> embeds = await data.embeds
             .ToAsyncEnumerable()
-            .SelectAwait(async x => await EmbedComponentData.From(x, galleries))
+            .Select(async (x, _, _) => await EmbedComponentData.From(x, galleries))
             .Where(x => x.HasValue)
             .Select(x => x!.Value)
             .ToListAsync();

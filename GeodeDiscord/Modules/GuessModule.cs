@@ -55,7 +55,7 @@ public partial class GuessModule(ApplicationDbContext db, QuoteRenderer renderer
             .Select(x => new { id = x.Key, weight = x.Count() })
             .OrderByDescending(x => x.weight)
             .AsAsyncEnumerable()
-            .SelectAwait(async x => (x.id, name: await GetUserNameAsync(x.id), x.weight))
+            .Select(async (x, _, _) => (x.id, name: await GetUserNameAsync(x.id), x.weight))
             .Where(x => x.name is not null)
             .Select(x => (x.id, name: x.name!, x.weight))
             .ToListAsync();
