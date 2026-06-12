@@ -2,16 +2,13 @@
 using System.Reflection;
 
 using Discord;
-using Discord.API.Gateway;
 using Discord.Interactions;
 using Discord.Rest;
 using Discord.WebSocket;
 
 using GeodeDiscord.Database;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Sqlite.Query.Internal;
 using Microsoft.Extensions.DependencyInjection;
-using Newtonsoft.Json.Linq;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
