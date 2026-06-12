@@ -91,12 +91,6 @@ public static class Program {
             return Task.CompletedTask;
         };
 
-        client.UserJoined += async user => {
-            if (user.Guild.Id != 911701438269386882)
-                return;
-            await StickyModule.OnUserJoined(user, services.GetRequiredService<ApplicationDbContext>());
-        };
-
         client.Ready += async () => {
             Log.Information("Caching all users");
             await client.DownloadUsersAsync(client.Guilds);
