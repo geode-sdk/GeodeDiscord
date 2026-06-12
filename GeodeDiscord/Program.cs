@@ -91,8 +91,6 @@ public static class Program {
             return Task.CompletedTask;
         };
 
-        client.Ready += async () => await CacheQuotedUsers(db, client);
-
         client.MessageReceived += async message => {
             if (message.Channel.Id != 1202076732346077235)
                 return;
@@ -117,62 +115,6 @@ public static class Program {
         };
 
         await Task.Delay(Timeout.Infinite);
-    }
-
-    private static async Task CacheQuotedUsers(ApplicationDbContext db, DiscordSocketClient client) {
-        List<ulong> userIds = await db.quotes.Select(x => x.authorId).Distinct().ToListAsync();
-        HashSet<ulong> missingUserIds = userIds.ToHashSet();
-
-        Log.Information("Caching {Count} quoted users", userIds.Count);
-
-        Dictionary<ulong, (TaskCompletionSource completion, int count, int total, int members)> progresses = [];
-
-        client.ApiClient.ReceivedGatewayEvent += OnReceivedGatewayEvent;
-
-        foreach (SocketGuild guild in client.Guilds) {
-            Log.Information("Downloading members for guild {Guild}", guild);
-            await client.ApiClient.SendGatewayAsync(GatewayOpCode.RequestGuildMembers, new {
-                guild_id = guild.Id,
-                user_ids = userIds
-            }, new RequestOptions());
-            progresses[guild.Id] = (new TaskCompletionSource(), 0, int.MaxValue, 0);
-        }
-
-        await Task.WhenAll(progresses.Values.Select(x => x.completion.Task));
-
-        client.ApiClient.ReceivedGatewayEvent -= OnReceivedGatewayEvent;
-
-        foreach (ulong id in missingUserIds.ToArray()) {
-            if (await Util.GetUserAsync(client, id) is not null)
-                missingUserIds.Remove(id);
-        }
-        return;
-
-        Task OnReceivedGatewayEvent(GatewayOpCode opCode, int? _, string type, object payloadObj) {
-            if (opCode != GatewayOpCode.Dispatch || type != "GUILD_MEMBERS_CHUNK")
-                return Task.CompletedTask;
-            JToken payload = (JToken)payloadObj;
-            SocketGuild guild = client.GetGuild(payload.Value<ulong>("guild_id"));
-            JArray members = payload.Value<JArray>("members")!;
-            foreach (ulong id in members.Select(x => x["user"]!.Value<ulong>("id")))
-                missingUserIds.Remove(id);
-            int index = payload.Value<int>("chunk_index");
-            int count = payload.Value<int>("chunk_count");
-            (TaskCompletionSource completion, int count, int total, int members) progress = progresses[guild.Id];
-            progress.count++;
-            progress.total = count;
-            progress.members += members.Count;
-            progresses[guild.Id] = progress;
-            Log.Information(
-                "Downloaded members chunk {Index} for guild {Guild}: {Count}/{Total} ({Members} members)",
-                index, guild, progress.count, progress.total, members.Count
-            );
-            if (progress.count < progress.total)
-                return Task.CompletedTask;
-            Log.Information("{Count} members downloaded for guild {Guild}", progress.members, guild);
-            progress.completion.SetResult();
-            return Task.CompletedTask;
-        }
     }
 
     // 🔥

@@ -2,6 +2,7 @@
 using System.Text.RegularExpressions;
 using Discord;
 using Discord.Interactions;
+using Discord.Rest;
 using Discord.WebSocket;
 using GeodeDiscord.Database;
 using GeodeDiscord.Database.Entities;
@@ -17,9 +18,9 @@ namespace GeodeDiscord.Modules;
 [Group("guess", "Play guess with quotes!"), UsedImplicitly]
 public partial class GuessModule(ApplicationDbContext db, QuoteRenderer renderer) :
     InteractionModuleBase<SocketInteractionContext> {
-    private async Task<string?> GetUserNameAsync(ulong id) {
-        IUser? user = await Util.GetUserAsync(Context.Client, id);
-        return user?.GlobalName ?? user?.Username ?? null;
+    private async Task<string> GetUserNameAsync(ulong id) {
+        RestUser? user = await Context.Client.Rest.GetUserAsync(id);
+        return user?.GlobalName ?? user?.Username ?? id.ToString(); // username seems to never be null
     }
 
     private enum GuessResult { Timeout, Incorrect, Correct }
@@ -29,35 +30,19 @@ public partial class GuessModule(ApplicationDbContext db, QuoteRenderer renderer
     public async Task Guess() {
         await DeferAsync();
 
-        IQueryable<Quote> quotes = db.quotes
+        Quote quote = await db.quotes
             .Where(x => x.components.Length == 0) // no components
             .OrderBy(_ => EF.Functions.Random())
-            .Take(10); // surely 10 is gonna be enough to find one
+            .FirstAsync();
 
-        Quote? quote = null;
-        string? quoteAuthorName = null;
-        foreach (Quote x in quotes) {
-            string? name = await GetUserNameAsync(x.authorId);
-            if (name is null)
-                continue;
-            quote = x;
-            quoteAuthorName = name;
-            break;
-        }
+        HashSet<(ulong id, Task<string> name)> selectedUsers = [
+            (quote.authorId, GetUserNameAsync(quote.authorId))
+        ];
 
-        if (quote is null || quoteAuthorName is null)
-            throw new MessageErrorException("Couldn't find a quote, please try again.");
-
-        HashSet<(ulong id, string name)> selectedUsers = [ (quote.authorId, quoteAuthorName) ];
-
-        List<(ulong id, string name, int weight)> leaderboard = await db.quotes
+        var leaderboard = await db.quotes
             .GroupBy(x => x.authorId)
             .Select(x => new { id = x.Key, weight = x.Count() })
             .OrderByDescending(x => x.weight)
-            .AsAsyncEnumerable()
-            .Select(async (x, _, _) => (x.id, name: await GetUserNameAsync(x.id), x.weight))
-            .Where(x => x.name is not null)
-            .Select(x => (x.id, name: x.name!, x.weight))
             .ToListAsync();
 
         int minIndex = leaderboard.FindIndex(x => x.id == quote.authorId);
@@ -77,14 +62,17 @@ public partial class GuessModule(ApplicationDbContext db, QuoteRenderer renderer
                 rand -= leaderboard[j].weight;
                 if (rand > 0)
                     continue;
-                selectedUsers.Add((leaderboard[j].id, leaderboard[j].name));
+                selectedUsers.Add((leaderboard[j].id, GetUserNameAsync(leaderboard[j].id)));
                 totalWeight -= leaderboard[j].weight;
                 leaderboard.RemoveAt(j);
                 break;
             }
         }
 
-        (ulong id, string name)[] users = selectedUsers.ToArray();
+        (ulong id, string name)[] users = await selectedUsers
+            .ToAsyncEnumerable()
+            .Select(async (x, _, _) => (x.id, await x.name))
+            .ToArrayAsync();
         Random.Shared.Shuffle(users);
 
         ActionRowBuilder buttons = new();
@@ -280,7 +268,7 @@ public partial class GuessModule(ApplicationDbContext db, QuoteRenderer renderer
                     names.Add(match.Value);
                     continue;
                 }
-                names.Add($"`@{await GetUserNameAsync(id) ?? id.ToString()}`");
+                names.Add($"`@{await GetUserNameAsync(id)}`");
             }
             // ReSharper disable AccessToDisposedClosure
             using List<string>.Enumerator enumerator = names.GetEnumerator();

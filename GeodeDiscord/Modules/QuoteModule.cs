@@ -2,6 +2,7 @@
 using System.Text;
 using Discord;
 using Discord.Interactions;
+using Discord.Rest;
 using Discord.WebSocket;
 
 using GeodeDiscord.Database;
@@ -251,9 +252,9 @@ public partial class QuoteModule(ApplicationDbContext db, QuoteEditor editor, Qu
         // defer in case getting the channel and all the users is slow
         await DeferAsync();
         IChannel? channel = await Util.GetChannelAsync(Context.Client, quote.channelId);
-        IUser? quoter = await Util.GetUserAsync(Context.Client, quote.quoterId);
-        IUser? author = await Util.GetUserAsync(Context.Client, quote.authorId);
-        IUser? replyAuthor = await Util.GetUserAsync(Context.Client, quote.replyAuthorId);
+        RestUser? quoter = await Context.Client.Rest.GetUserAsync(quote.quoterId);
+        RestUser? author = await Context.Client.Rest.GetUserAsync(quote.authorId);
+        RestUser? replyAuthor = await Context.Client.Rest.GetUserAsync(quote.replyAuthorId);
         builder.AppendLine($"- Message: `{quote.messageId}` {quote.jumpUrl}");
         builder.AppendLine($"- ID: `{quote.id}`");
         builder.AppendLine($"- Name: `{quote.name}`");

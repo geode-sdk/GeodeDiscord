@@ -11,8 +11,10 @@ public partial class RootModule {
      DefaultMemberPermissions(GuildPermission.Administrator),
      UsedImplicitly]
     public async Task Say(string message, Attachment? a0 = null, Attachment? a1 = null, Attachment? a2 = null) {
-        IUser? user = await Util.GetUserAsync(Context.Client, Context.User.Id);
-        string content = $"`@{user?.GlobalName ?? Context.User.Id.ToString()}`: {message}";
+        string displayName = Context.User.GlobalName
+            ?? (await Context.Client.GetUserAsync(Context.User.Id)).GlobalName
+            ?? Context.User.Id.ToString();
+        string content = $"`@{displayName}`: {message}";
         List<Attachment> attachments = Enumerable.Empty<Attachment?>()
             .Append(a0).Append(a1).Append(a2)
             .Where(x => x is not null)

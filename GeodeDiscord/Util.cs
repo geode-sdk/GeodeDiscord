@@ -29,23 +29,6 @@ public static class Util {
         _ => LogEventLevel.Information
     };
 
-    private static readonly ConcurrentDictionary<ulong, IUser?> extraUserCache = [];
-    public static async Task<IUser?> GetUserAsync(DiscordSocketClient client, ulong id) {
-        if (id == 0)
-            return null;
-        IUser? user = client.GetUser(id);
-        if (user is not null || extraUserCache.TryGetValue(id, out user))
-            return user;
-        try { user = await client.GetUserAsync(id); }
-        catch (Exception ex) {
-            Log.Error(ex, "Failed to get user {Id}", id);
-            return null;
-        }
-        extraUserCache[id] = user;
-        Log.Information("Added user {User} ({Username}, {Id}) to extra cache", user?.GlobalName, user?.Username, id);
-        return user;
-    }
-
     private static readonly ConcurrentDictionary<ulong, IChannel?> extraChannelCache = [];
     public static async Task<IChannel?> GetChannelAsync(DiscordSocketClient client, ulong id) {
         if (id == 0)
