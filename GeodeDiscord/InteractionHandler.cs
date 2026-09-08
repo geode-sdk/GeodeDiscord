@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 
 using Discord;
 using Discord.Interactions;
@@ -10,6 +11,29 @@ using Serilog;
 namespace GeodeDiscord;
 
 public class InteractionHandler(DiscordSocketClient client, InteractionService handler, IServiceProvider services) {
+    private readonly Dictionary<ulong, Dictionary<string, IApplicationCommand>> _commands = [ ];
+
+    public bool TryGetCommand(ulong guildId, string name, [NotNullWhen(true)] out IApplicationCommand? command) {
+        int spaceIndex = name.IndexOf(' ');
+        string rootName = spaceIndex == -1 ? name : name[..spaceIndex];
+        if (
+            _commands.TryGetValue(guildId, out Dictionary<string, IApplicationCommand>? guildCommands) &&
+            guildCommands.TryGetValue(rootName, out IApplicationCommand? guildCommand)
+        ) {
+            command = guildCommand;
+            return true;
+        }
+        if (
+            _commands.TryGetValue(0, out Dictionary<string, IApplicationCommand>? globalCommands) &&
+            globalCommands.TryGetValue(rootName, out IApplicationCommand? globalCommand)
+        ) {
+            command = globalCommand;
+            return true;
+        }
+        command = null;
+        return false;
+    }
+
     public async Task InitializeAsync() {
         client.Ready += ReadyAsync;
         client.InteractionCreated += interaction => {
@@ -37,8 +61,10 @@ public class InteractionHandler(DiscordSocketClient client, InteractionService h
         await handler.RestClient.BulkOverwriteGlobalCommands([]);
 
         Log.Information("Registering guild commands");
-        foreach (SocketGuild guild in client.Guilds)
-            await handler.RegisterCommandsToGuildAsync(guild.Id);
+        foreach (SocketGuild guild in client.Guilds) {
+            _commands[guild.Id] = (await handler.RegisterCommandsToGuildAsync(guild.Id))
+                .ToDictionary(x => x.Name, x => (IApplicationCommand)x);
+        }
 
         await client.SetActivityAsync(new CustomStatusGame("being debugged rn yay"));
 #else
@@ -47,7 +73,8 @@ public class InteractionHandler(DiscordSocketClient client, InteractionService h
             await handler.RestClient.BulkOverwriteGuildCommands([], guild.Id);
 
         Log.Information("Registering global commands");
-        await handler.RegisterCommandsGloballyAsync();
+        _commands[0] = (await handler.RegisterCommandsGloballyAsync())
+            .ToDictionary(x => x.Name, x => (IApplicationCommand)x);
 #endif
     }
 
